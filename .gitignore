@@ -1,0 +1,18 @@
+# Ignore Python virtual environments
+/scraper/scraper_env/
+
+# Ignore environment variable files
+.env
+scraper/.env
+api/.env
+client/.env
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore VSCode settings
+.vscode/
+
+# Ignore Mac system files
+.DS_Store
