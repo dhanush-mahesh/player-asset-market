@@ -1,6 +1,6 @@
 import os
 import feedparser # A simple library for RSS feeds
-from transformers import pipeline # For the Hugging Face model
+from transformers import pipeline # Hugging Face model
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import datetime

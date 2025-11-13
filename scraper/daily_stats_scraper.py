@@ -84,18 +84,17 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
         if player_stats_df.empty:
             print(f"  No player stats found for game {game_id}.")
             return [], []
-
-        # We can use the teamName from the box score, it's easier
         
         for index, row in player_stats_df.iterrows():
             
-            # Use the 'minutes' column to check for DNP
             if not row['minutes'] or row['minutes'].startswith('PT00M'):
                 continue
                 
-            # --- ⭐️ CHANGED: Use the correct column names from your log ---
             player_name = f"{row['firstName']} {row['familyName']}"
             team_name = row['teamName']
+            
+            # --- ⭐️ 1. GET THE POSITION ---
+            position = row['position'] or "N/A" # Use "N/A" if position is blank
             
             stat_line = {
                 "player_name": player_name,
@@ -110,7 +109,9 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
             }
             
             player_stats_list.append(stat_line)
-            player_names_found.add((player_name, team_name))
+            
+            # --- ⭐️ 2. PASS THE POSITION UP TO THE NEXT STAGE ---
+            player_names_found.add((player_name, team_name, position))
             
         print(f"    Processed {len(player_stats_list)} players for game {game_id}.")
         return player_stats_list, list(player_names_found)
@@ -122,7 +123,7 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
 # --- 3. MAIN EXECUTION ---
 def run_stats_pipeline():
     print("\n--- STAGE 1: Fetching Existing Players ---")
-    player_map = {} # Maps {full_name: supabase_id}
+    player_map = {} 
     try:
         response = supabase.table('players').select('id, full_name').execute()
         if response.data:
@@ -150,18 +151,20 @@ def run_stats_pipeline():
         new_stats, new_players = get_stats_from_game_id(game_id, game_date)
         all_scraped_stats.extend(new_stats)
         all_scraped_players.update(new_players)
-        time.sleep(1.5) # Be polite to the API
+        time.sleep(1.5) 
     
     print(f"\nTotal stat lines scraped: {len(all_scraped_stats)}")
 
     print("\n--- STAGE 4: Inserting New Players ---")
     new_players_to_insert = []
-    for player_name, team_name in all_scraped_players:
+    
+    # --- ⭐️ 3. UNPACK THE POSITION ---
+    for player_name, team_name, position in all_scraped_players:
         if player_name not in player_map:
             new_players_to_insert.append({
                 "full_name": player_name, 
                 "team_name": team_name,
-                "position": "N/A" # Position is in the data, but let's keep it simple
+                "position": position # <-- Add the position here
             }) 
             
     if new_players_to_insert:
