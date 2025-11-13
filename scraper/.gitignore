@@ -1,0 +1,13 @@
+# Ignore all .env files in all folders
+**/.env
+
+# Ignore all Python virtual environments
+**/scraper_env/
+**/api_env/
+
+# Ignore Python cache
+**/.pytest_cache/
+**/__pycache__/
+
+# Ignore OS-specific files
+.DS_Store

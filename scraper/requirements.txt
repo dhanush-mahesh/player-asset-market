@@ -1,0 +1,8 @@
+python-dotenv
+supabase
+requests
+feedparser
+numpy<2.0
+transformers
+torch
+nba-api
