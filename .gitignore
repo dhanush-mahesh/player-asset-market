@@ -23,3 +23,7 @@ client/.eslintcache
 # Debug scripts
 scraper/debug_api.py
 scraper/debug_columns.py
+# Debug scripts
+scraper/debug_api.py
+scraper/debug_columns.py
+scraper/debug_roster.py

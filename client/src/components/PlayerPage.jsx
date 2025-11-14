@@ -1,35 +1,37 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { ArrowLeft, Loader2, Newspaper, TrendingUp, BarChartHorizontal } from 'lucide-react'
-import PlayerChart from './Chart' // We will create this next
-import StatCard from './StatCard' // We will create this next
+import { ArrowLeft, Loader2, Newspaper, TrendingUp, BarChartHorizontal, CheckSquare } from 'lucide-react'
+import PlayerChart from './Chart'
+import StatCard from './StatCard'
 
 function PlayerPage({ playerId, onBackClick, apiUrl }) {
   const [player, setPlayer] = useState(null)
   const [stats, setStats] = useState([])
   const [news, setNews] = useState([])
   const [valueHistory, setValueHistory] = useState([])
+  const [seasonStats, setSeasonStats] = useState(null) // <-- ⭐️ 1. ADD NEW STATE
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Scroll to top when the page loads
     window.scrollTo(0, 0)
     
     async function fetchPlayerData() {
       setLoading(true)
       try {
-        // Run all API calls in parallel for speed
-        const [infoRes, statsRes, newsRes, valueRes] = await Promise.all([
+        // --- ⭐️ 2. ADD NEW API CALL TO PROMISE.ALL ---
+        const [infoRes, statsRes, newsRes, valueRes, seasonStatsRes] = await Promise.all([
           axios.get(`${apiUrl}/player/${playerId}`),
           axios.get(`${apiUrl}/player/${playerId}/stats`),
           axios.get(`${apiUrl}/player/${playerId}/news`),
-          axios.get(`${apiUrl}/player/${playerId}/value_history`)
+          axios.get(`${apiUrl}/player/${playerId}/value_history`),
+          axios.get(`${apiUrl}/player/${playerId}/season_stats`) // <-- New call
         ])
         
         setPlayer(infoRes.data)
         setStats(statsRes.data)
         setNews(newsRes.data)
         setValueHistory(valueRes.data)
+        setSeasonStats(seasonStatsRes.data) // <-- ⭐️ 3. SET NEW STATE
 
       } catch (error) {
         console.error("Error fetching player details:", error)
@@ -55,12 +57,10 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
     return <p>Player not found.</p>
   }
 
-  // Get the most recent value score for the header
   const latestValue = valueHistory.length > 0 ? valueHistory[valueHistory.length - 1]?.value_score : null;
 
   return (
     <div>
-      {/* Back Button */}
       <button
         onClick={onBackClick}
         className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors mb-6"
@@ -71,7 +71,8 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
 
       {/* Player Header */}
       <div className="flex justify-between items-center mb-8">
-        <div>
+        {/* ... (Header code is unchanged) ... */}
+         <div>
           <h1 className="text-5xl font-bold">{player.full_name}</h1>
           <p className="text-2xl text-neutral-400">{player.team_name} &middot; {player.position || 'N/A'}</p>
         </div>
@@ -91,7 +92,8 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
           
           {/* Chart */}
           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
-            <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
+            {/* ... (Chart code is unchanged) ... */}
+             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <TrendingUp size={24} />
               Value Index Chart
             </h2>
@@ -100,29 +102,74 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
             </div>
           </div>
 
-          {/* Stats Section */}
+          {/* Recent Game Stats */}
           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <BarChartHorizontal size={24} />
-              Recent Performance
+              Most Recent Game
             </h2>
             {stats.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <StatCard label="Points" value={stats[0].points} />
                 <StatCard label="Rebounds" value={stats[0].rebounds} />
                 <StatCard label="Assists" value={stats[0].assists} />
                 <StatCard label="Steals" value={stats[0].steals} />
                 <StatCard label="Blocks" value={stats[0].blocks} />
+                <StatCard label="TOVs" value={stats[0].turnovers} />
               </div>
             ) : (
               <p className="text-neutral-400">No recent game stats found.</p>
             )}
           </div>
+          
+          {/* --- ⭐️ 4. NEW SEASON STATS TABLE --- */}
+          <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
+            <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
+              <CheckSquare size={24} />
+              Season Averages (Per Game)
+            </h2>
+            {seasonStats ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-highlight-light">
+                      <th className="p-2 text-neutral-400">Season</th>
+                      <th className="p-2 text-neutral-400">GP</th>
+                      <th className="p-2 text-neutral-400">MIN</th>
+                      <th className="p-2 text-neutral-400">PTS</th>
+                      <th className="p-2 text-neutral-400">REB</th>
+                      <th className="p-2 text-neutral-400">AST</th>
+                      <th className="p-2 text-neutral-400">STL</th>
+                      <th className="p-2 text-neutral-400">BLK</th>
+                      <th className="p-2 text-neutral-400">TOV</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="font-medium">
+                      <td className="p-2">{seasonStats.season}</td>
+                      <td className="p-2">{seasonStats.games_played}</td>
+                      <td className="p-2">{seasonStats.minutes_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.points_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.rebounds_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.assists_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.steals_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.blocks_avg.toFixed(1)}</td>
+                      <td className="p-2">{seasonStats.turnovers_avg.toFixed(1)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-neutral-400">No season stats found for this player yet.</p>
+            )}
+          </div>
+          
         </div>
 
         {/* Right Column: Market Buzz */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
+          {/* ... (Market Buzz code is unchanged) ... */}
+           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <Newspaper size={24} />
               Market Buzz

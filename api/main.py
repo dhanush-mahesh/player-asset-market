@@ -29,7 +29,6 @@ def read_root():
 @app.get("/players")
 def get_players():
     try:
-        # --- ⭐️ UPDATED: Added 'headshot_url' ---
         response = supabase.table('players').select(
             'id, full_name, team_name, position, headshot_url'
         ).execute()
@@ -41,10 +40,7 @@ def get_players():
 @app.get("/featured-players")
 def get_featured_players():
     try:
-        # --- ⭐️ UPDATED: Changed 'position' to '"position"' and added 'headshot_url' ---
-        response = supabase.rpc('get_featured_players').select(
-            'player_id, full_name, team_name, "position", latest_value, headshot_url'
-        ).execute()
+        response = supabase.rpc('get_featured_players').execute()
         return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -53,7 +49,6 @@ def get_featured_players():
 @app.get("/player/{player_id}")
 def get_player_info(player_id: str):
     try:
-        # --- ⭐️ UPDATED: Added 'headshot_url' ---
         response = supabase.table('players').select('*').eq('id', player_id).single().execute()
         return response.data
     except Exception as e:
@@ -77,6 +72,25 @@ def get_player_stats(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- ⭐️ 4. NEW ENDPOINT ---
+@app.get("/player/{player_id}/season_stats")
+def get_player_season_stats(player_id: str):
+    """
+    Gets the latest season averages for a player.
+    """
+    try:
+        # Get the latest season's stats for this player
+        response = supabase.table('player_season_stats') \
+            .select('*') \
+            .eq('player_id', player_id) \
+            .order('season', desc=True) \
+            .limit(1) \
+            .maybe_single() \
+            .execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # GET /player/<player_id>/news
 @app.get("/player/{player_id}/news")
 def get_player_news(player_id: str):
@@ -90,7 +104,6 @@ def get_player_news(player_id: str):
 @app.get("/market-movers")
 def get_market_movers():
     try:
-        # --- ⭐️ UPDATED: Added 'headshot_url' to the function call ---
         response = supabase.rpc('get_market_movers').execute()
         all_movers = response.data
         all_movers.sort(key=lambda x: x['value_change'], reverse=True)

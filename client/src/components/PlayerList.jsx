@@ -14,21 +14,30 @@ function PlayerList({ allPlayers, featuredPlayers, loading, onPlayerClick, apiUr
     )
   }, [searchQuery, allPlayers])
 
-  // Use the featuredPlayers prop for the initial view
   const displayPlayers = searchQuery === "" 
-    ? featuredPlayers 
+    ? featuredPlayers
     : filteredPlayers
 
   return (
     <div className="flex flex-col"> 
       
       <div className="text-center max-w-2xl mx-auto mb-12 mt-8">
-        <h1 className="text-5xl font-bold tracking-tight text-transparent 
-                       bg-clip-text bg-gradient-to-r from-neutral-100 to-neutral-500 mb-4">
-          Player Asset Market
+        
+        <img 
+          src="/logo.png" 
+          alt="Sportfolio Logo" 
+          className="w-24 h-24 mx-auto mb-6 cursor-pointer"
+        />
+
+        {/* --- ⭐️ THIS IS THE NEW CREATIVE TEXT ⭐️ --- */}
+        <h1 className="text-6xl font-extrabold tracking-tighter text-transparent 
+                       bg-clip-text bg-gradient-to-r from-purple-400 via-blue-500 to-green-400 
+                       bg-200% animate-text-shimmer mb-4">
+          Sportfolio
         </h1>
+        
         <p className="text-xl text-neutral-400">
-          The stock market for professional athletes. Track value, analyze sentiment, and buy low.
+          Go beyond the box score. Trade on the buzz.
         </p>
       </div>
 
@@ -64,20 +73,17 @@ function PlayerList({ allPlayers, featuredPlayers, loading, onPlayerClick, apiUr
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayPlayers.map(player => (
               <div
-                // Use player_id (from featured) or id (from allPlayers)
-                key={player.player_id || player.id} 
+                key={player.player_id || player.id}
                 onClick={() => onPlayerClick(player.player_id || player.id)}
                 className="group bg-highlight-dark border border-highlight-light rounded-xl 
                            cursor-pointer transition-all duration-300 hover:bg-highlight-light 
                            hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 
                            transform hover:-translate-y-1 p-5 flex items-center gap-4"
               >
-                {/* Player Headshot */}
                 <img 
                   src={player.headshot_url} 
                   alt={player.full_name}
                   className="w-16 h-16 rounded-full bg-highlight-light object-cover border-2 border-neutral-700"
-                  // Use a fallback image in case the URL is broken
                   onError={(e) => e.target.src = 'https://cdn.nba.com/headshots/nba/latest/1040x760/fallback.png'}
                 />
                 
