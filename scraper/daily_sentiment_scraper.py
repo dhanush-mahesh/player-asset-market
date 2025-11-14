@@ -25,7 +25,11 @@ except Exception as e:
 
 print("Loading sentiment model (this may take a moment)...")
 try:
-    sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+    # --- ⭐️ THIS IS THE FIX (Part 1) ---
+    # We are using a robust model that HAS a .safetensors file
+    model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
+    sentiment_pipeline = pipeline("sentiment-analysis", model=model_name)
+    
     print("Sentiment model loaded successfully.")
 except Exception as e:
     print(f"Error loading sentiment model: {e}")
@@ -76,12 +80,21 @@ def run_sentiment_pipeline():
                 try:
                     result = sentiment_pipeline(headline)[0]
                     label = result['label']
-                    score = result['score']
                     
-                    if label == 'NEGATIVE':
-                        sentiment_score = -score
-                    else:
-                        sentiment_score = score
+                    # Convert the new model's 1-5 star output to our -1.0 to +1.0 scale
+                    sentiment_score = 0.0
+                    if label == '5 stars':
+                        sentiment_score = 1.0
+                    elif label == '4 stars':
+                        sentiment_score = 0.5
+                    elif label == '3 stars':
+                        sentiment_score = 0.0  # Neutral
+                    elif label == '2 stars':
+                        sentiment_score = -0.5
+                    elif label == '1 star':
+                        sentiment_score = -1.0
+                    
+                    print(f"    New Score: {label} ({sentiment_score:.2f})")
                         
                     sentiment_obj = {
                         "player_id": player_id,
@@ -99,8 +112,6 @@ def run_sentiment_pipeline():
     if sentiment_to_insert:
         print(f"\nUpserting {len(sentiment_to_insert)} sentiment records...")
         try:
-            # --- ⭐️ THIS IS THE FIX ⭐️ ---
-            # Use the COLUMN NAMES, not the constraint name
             response = supabase.table('daily_player_sentiment').upsert(
                 sentiment_to_insert, 
                 on_conflict='player_id, article_guid'

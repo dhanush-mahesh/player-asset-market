@@ -1,21 +1,22 @@
 import { useState, useMemo } from 'react'
 import { Search, Loader2 } from 'lucide-react'
-import MarketMovers from './MarketMovers' // <-- 1. Import the new component
+import MarketMovers from './MarketMovers'
 
-function PlayerList({ players, loading, onPlayerClick, apiUrl }) { // <-- 2. Get apiUrl as a prop
+function PlayerList({ allPlayers, featuredPlayers, loading, onPlayerClick, apiUrl }) {
   const [searchQuery, setSearchQuery] = useState("")
 
   const filteredPlayers = useMemo(() => {
     if (searchQuery === "") {
-      return players
+      return allPlayers
     }
-    return players.filter(player =>
+    return allPlayers.filter(player =>
       player.full_name.toLowerCase().includes(searchQuery.toLowerCase())
     )
-  }, [searchQuery, players])
+  }, [searchQuery, allPlayers])
 
+  // Use the featuredPlayers prop for the initial view
   const displayPlayers = searchQuery === "" 
-    ? filteredPlayers.slice(0, 9) 
+    ? featuredPlayers 
     : filteredPlayers
 
   return (
@@ -31,10 +32,8 @@ function PlayerList({ players, loading, onPlayerClick, apiUrl }) { // <-- 2. Get
         </p>
       </div>
 
-      {/* --- 3. Add the MarketMovers component here --- */}
       <MarketMovers onPlayerClick={onPlayerClick} apiUrl={apiUrl} />
       
-      {/* Search Section */}
       <div className="w-full max-w-xl relative mb-12 self-center">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
           <Search className="text-neutral-500" size={24} />
@@ -50,40 +49,43 @@ function PlayerList({ players, loading, onPlayerClick, apiUrl }) { // <-- 2. Get
         />
       </div>
 
-      {/* Loading Spinner */}
       {loading && (
         <div className="flex justify-center items-center h-64">
           <Loader2 className="animate-spin text-neutral-500" size={48} />
         </div>
       )}
 
-      {/* Player Grid */}
       {!loading && (
         <div className="w-full">
           <h2 className="text-2xl font-semibold mb-6 text-neutral-300 pl-1">
-            {searchQuery ? `Search Results (${filteredPlayers.length})` : "Featured Players"}
+            {searchQuery ? `Search Results (${filteredPlayers.length})` : "Top 9 Players"}
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayPlayers.map(player => (
               <div
-                key={player.id}
-                onClick={() => onPlayerClick(player.id)}
-                className="group bg-highlight-dark border border-highlight-light rounded-xl p-6 
+                // Use player_id (from featured) or id (from allPlayers)
+                key={player.player_id || player.id} 
+                onClick={() => onPlayerClick(player.player_id || player.id)}
+                className="group bg-highlight-dark border border-highlight-light rounded-xl 
                            cursor-pointer transition-all duration-300 hover:bg-highlight-light 
                            hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 
-                           transform hover:-translate-y-1"
+                           transform hover:-translate-y-1 p-5 flex items-center gap-4"
               >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-xl font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
-                      {player.full_name}
-                    </h3>
-                    <p className="text-neutral-400 font-medium">{player.team_name}</p>
-                  </div>
-                  <span className="px-3 py-1 rounded-full bg-highlight-light text-xs font-bold text-neutral-300 border border-neutral-700">
-                    {player.position || 'N/A'}
-                  </span>
+                {/* Player Headshot */}
+                <img 
+                  src={player.headshot_url} 
+                  alt={player.full_name}
+                  className="w-16 h-16 rounded-full bg-highlight-light object-cover border-2 border-neutral-700"
+                  // Use a fallback image in case the URL is broken
+                  onError={(e) => e.target.src = 'https://cdn.nba.com/headshots/nba/latest/1040x760/fallback.png'}
+                />
+                
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
+                    {player.full_name}
+                  </h3>
+                  <p className="text-neutral-400 font-medium">{player.team_name} &middot; {player.position || 'N/A'}</p>
                 </div>
               </div>
             ))}
@@ -91,7 +93,7 @@ function PlayerList({ players, loading, onPlayerClick, apiUrl }) { // <-- 2. Get
 
           {searchQuery === "" && (
             <p className="text-center text-neutral-500 mt-12">
-              Start typing to search {players.length} players...
+              Start typing to search {allPlayers.length} players...
             </p>
           )}
         </div>

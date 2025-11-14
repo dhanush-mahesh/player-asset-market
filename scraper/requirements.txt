@@ -6,3 +6,5 @@ numpy<2.0
 transformers
 torch
 nba-api
+safetensors
+pandas
