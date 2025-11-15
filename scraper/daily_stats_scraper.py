@@ -1,10 +1,9 @@
 import os
-import requests
+import requests # <-- 1. IMPORT REQUESTS FOR TIMEOUTS
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import datetime
 import time
-# --- ⭐️ 1. IMPORT THE NEW API ENDPOINT ---
 from nba_api.stats.endpoints import scoreboardv2, boxscoretraditionalv3, playerdashboardbyyearoveryear
 from nba_api.stats.static import teams
 
@@ -30,12 +29,11 @@ headers = {
 # --- 2. NBA API FUNCTIONS ---
 
 def get_game_ids_for_yesterday():
-    # (This function is unchanged)
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
     game_date = yesterday
     print(f"Fetching game IDs for {game_date.strftime('%Y-%m-%d')}...")
     try:
-        scoreboard = scoreboardv2.ScoreboardV2(game_date=game_date.strftime('%m/%d/%Y'), headers=headers, timeout=10)
+        scoreboard = scoreboardv2.ScoreboardV2(game_date=game_date.strftime('%m/%d/%Y'), headers=headers, timeout=30) # Increased timeout
         games = scoreboard.game_header.get_data_frame()
         if games.empty:
             print("No games found for yesterday.")
@@ -51,10 +49,10 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
     print(f"  Fetching box score for game: {game_id}")
     player_stats_list = []
     player_info_list = set()
-    season_stats_list = [] # --- ⭐️ 2. LIST TO HOLD NEW SEASON STATS ---
+    season_stats_list = []
     
     try:
-        boxscore = boxscoretraditionalv3.BoxScoreTraditionalV3(game_id=game_id, headers=headers, timeout=10)
+        boxscore = boxscoretraditionalv3.BoxScoreTraditionalV3(game_id=game_id, headers=headers, timeout=30) # Increased timeout
         player_stats_df = boxscore.player_stats.get_data_frame()
         if player_stats_df.empty:
             print(f"  No player stats found for game {game_id}.")
@@ -70,7 +68,6 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
             position = row['position'] or "N/A"
             headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_api_id}.png"
             
-            # --- This is for 'daily_player_stats' (unchanged) ---
             stat_line = {
                 "nba_api_id_temp": nba_api_id,
                 "game_date": game_date.isoformat(),
@@ -84,46 +81,60 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
             player_stats_list.append(stat_line)
             player_info_list.add((nba_api_id, player_name, team_name, position, headshot_url))
             
-            # --- ⭐️ 3. FETCH THIS PLAYER'S NEW SEASON AVERAGES ---
-            try:
-                # This API call gets stats for the current season
-                seas_stats = playerdashboardbyyearoveryear.PlayerDashboardByYearOverYear(
-                    player_id=nba_api_id,
-                    season="2025-26", # Hardcoded for this season
-                    per_mode_detailed="PerGame",
-                    headers=headers,
-                    timeout=10
-                )
-                seas_df = seas_stats.overall_player_dashboard.get_data_frame()
+            # --- ⭐️ 2. ADDED RETRY LOOP FOR SEASON STATS ---
+            retries = 3
+            while retries > 0:
+                try:
+                    seas_stats = playerdashboardbyyearoveryear.PlayerDashboardByYearOverYear(
+                        player_id=nba_api_id,
+                        season="2025",
+                        per_mode_detailed="PerGame",
+                        headers=headers,
+                        timeout=30 # Increased timeout
+                    )
+                    seas_df = seas_stats.overall_player_dashboard.get_data_frame()
+                    
+                    if not seas_df.empty:
+                        latest_seas = seas_df.iloc[0]
+                        season_obj = {
+                            "nba_api_id_temp": nba_api_id,
+                            "season": latest_seas['GROUP_VALUE'],
+                            "games_played": int(latest_seas['GP'] or 0),
+                            "minutes_avg": float(latest_seas['MIN'] or 0),
+                            "points_avg": float(latest_seas['PTS'] or 0),
+                            "rebounds_avg": float(latest_seas['REB'] or 0),
+                            "assists_avg": float(latest_seas['AST'] or 0),
+                            "steals_avg": float(latest_seas['STL'] or 0),
+                            "blocks_avg": float(latest_seas['BLK'] or 0),
+                            "turnovers_avg": float(latest_seas['TOV'] or 0)
+                        }
+                        season_stats_list.append(season_obj)
+                    
+                    break # Success, exit the retry loop
                 
-                if not seas_df.empty:
-                    latest_seas = seas_df.iloc[0] # Get the first (and only) row
-                    season_obj = {
-                        "nba_api_id_temp": nba_api_id,
-                        "season": latest_seas['GROUP_VALUE'],
-                        "games_played": int(latest_seas['GP'] or 0),
-                        "minutes_avg": float(latest_seas['MIN'] or 0),
-                        "points_avg": float(latest_seas['PTS'] or 0),
-                        "rebounds_avg": float(latest_seas['REB'] or 0),
-                        "assists_avg": float(latest_seas['AST'] or 0),
-                        "steals_avg": float(latest_seas['STL'] or 0),
-                        "blocks_avg": float(latest_seas['BLK'] or 0),
-                        "turnovers_avg": float(latest_seas['TOV'] or 0)
-                    }
-                    season_stats_list.append(season_obj)
-                
-                time.sleep(0.5) # Be polite to the API
-            except Exception as e:
-                print(f"    Error fetching season stats for {player_name}: {e}")
+                except requests.exceptions.ReadTimeout as e:
+                    retries -= 1
+                    if retries > 0:
+                        print(f"    !!! Read Timeout for {player_name} season stats. Retries left: {retries}. Cooling down for 30s...")
+                        time.sleep(30)
+                    else:
+                        print(f"    !!! FAILED to get season stats for {player_name} after 3 retries. Skipping.")
+                except Exception as e:
+                    print(f"    Error fetching season stats for {player_name}: {e}")
+                    break # Break on other, non-timeout errors
+            
+            # --- ⭐️ 3. INCREASED DELAY BETWEEN PLAYERS ---
+            time.sleep(2) # 2 second delay between each player
             
         print(f"    Processed {len(player_stats_list)} players for game {game_id}.")
-        return player_stats_list, list(player_info_list), season_stats_list # <-- ⭐️ 4. RETURN NEW LIST
+        return player_stats_list, list(player_info_list), season_stats_list
         
     except Exception as e:
         print(f"  Error fetching/parsing box score for game {game_id}: {e}")
         return [], [], []
 
 # --- 3. MAIN EXECUTION ---
+# (This entire section is unchanged, but will now receive data correctly)
 def run_stats_pipeline():
     print("\n--- STAGE 1: Fetching Existing Players ---")
     player_map = {} # Maps {nba_api_id: supabase_id}
@@ -146,19 +157,18 @@ def run_stats_pipeline():
     print(f"\n--- STAGE 3: Fetching All Box Scores ---")
     all_scraped_stats = []
     all_scraped_players_info = set()
-    all_season_stats = [] # <-- ⭐️ 5. LIST TO HOLD ALL SEASON STATS
+    all_season_stats = []
     
     for game_id in game_ids:
-        new_stats, new_player_info, new_season_stats = get_stats_from_game_id(game_id, game_date) # <-- ⭐️ 6. GET NEW LIST
+        new_stats, new_player_info, new_season_stats = get_stats_from_game_id(game_id, game_date)
         all_scraped_stats.extend(new_stats)
         all_scraped_players_info.update(new_player_info)
-        all_season_stats.extend(new_season_stats) # <-- ⭐️ 7. ADD TO MAIN LIST
-        time.sleep(1) # Unchanged
+        all_season_stats.extend(new_season_stats)
+        time.sleep(1)
     
     print(f"\nTotal stat lines scraped: {len(all_scraped_stats)}")
     print(f"Total season stats updated: {len(all_season_stats)}")
 
-    # --- STAGE 4: Upserting New Players (Unchanged) ---
     print("\n--- STAGE 4: Upserting New Players ---")
     new_players_to_insert = []
     for nba_api_id, full_name, team_name, position, headshot_url in all_scraped_players_info:
@@ -180,7 +190,6 @@ def run_stats_pipeline():
     else:
         print("No new players to insert.")
 
-    # --- STAGE 5: Upserting Daily Stats (Unchanged) ---
     print("\n--- STAGE 5: Upserting Daily Stats ---")
     final_stats_to_insert = []
     for stat_line in all_scraped_stats:
@@ -203,7 +212,6 @@ def run_stats_pipeline():
     else:
         print("\nNo new stats to insert.")
         
-    # --- ⭐️ 8. NEW STAGE 6: UPSERT SEASON STATS ---
     print("\n--- STAGE 6: Upserting Season Stats ---")
     final_season_stats_to_insert = []
     for stat_line in all_season_stats:

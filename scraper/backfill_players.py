@@ -57,27 +57,22 @@ except Exception as e:
 try:
     print("Fetching players who already have season stats...")
     
-    # --- ⭐️ THIS IS THE NEW LOGIC ⭐️ ---
-    # 1. Get all players from our 'players' table
     response = supabase.table('players').select('id, nba_api_id').execute()
     if not response.data:
         print("No players found in your 'players' table. Run ./run_all.sh first.")
         exit()
     player_map_supabase = {p['id']: p['nba_api_id'] for p in response.data}
     
-    # 2. Get all stats from 'player_season_stats' table
     response = supabase.table('player_season_stats').select('player_id').execute()
     
     processed_player_ids_supabase = set()
     if response.data:
         processed_player_ids_supabase = {s['player_id'] for s in response.data}
     
-    # 3. Convert Supabase UUIDs back to NBA API IDs
     processed_player_nba_ids = {player_map_supabase[uuid] for uuid in processed_player_ids_supabase if uuid in player_map_supabase}
     
     print(f"Found {len(processed_player_nba_ids)} players who are already complete.")
     
-    # 4. Filter the main DataFrame to only include players we haven't processed
     original_count = len(player_df)
     player_df = player_df[~player_df['PERSON_ID'].isin(processed_player_nba_ids)]
     print(f"Remaining players to process: {len(player_df)} (out of {original_count})")
@@ -91,7 +86,6 @@ except Exception as e:
     exit()
     
 # --- 4. TRANSFORM DATA (Slow, in Chunks) ---
-# (This section is identical to the previous file)
 players_to_insert = []
 season_stats_to_insert = []
 chunk_size = 100 
@@ -124,7 +118,12 @@ for start_index in range(0, len(player_df), chunk_size):
                 time.sleep(2) 
                 
                 seas_stats = playerdashboardbyyearoveryear.PlayerDashboardByYearOverYear(
-                    player_id=nba_api_id, season="2025-26", per_mode_detailed="PerGame", headers=headers, timeout=30
+                    player_id=nba_api_id,
+                    # --- ⭐️ THIS IS THE FIX ---
+                    season="2025", # Was "2025-26"
+                    per_mode_detailed="PerGame",
+                    headers=headers,
+                    timeout=30
                 )
                 seas_df = seas_stats.overall_player_dashboard.get_data_frame()
                 
@@ -177,7 +176,6 @@ for start_index in range(0, len(player_df), chunk_size):
             print(f"Successfully upserted {len(player_response.data)} player records.")
             
             if player_response.data and chunk_season_stats_list:
-                # We need to get the *full* map, not just the chunk map
                 full_player_map_resp = supabase.table('players').select('id, nba_api_id').execute()
                 player_map = {p['nba_api_id']: p['id'] for p in full_player_map_resp.data}
 

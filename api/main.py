@@ -3,6 +3,9 @@ from fastapi import FastAPI, HTTPException
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+from typing import List
+from pydantic import BaseModel
 
 # --- 1. SETUP & CONFIG ---
 load_dotenv()
@@ -20,23 +23,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class CompareRequest(BaseModel):
+    player_ids: List[str] 
+
 # --- 3. API ENDPOINTS ---
 @app.get("/")
 def read_root():
-    return {"message": "Player Asset Market API is running"}
+    return {"message": "Sportfolio API is running"}
 
-# GET /players
 @app.get("/players")
 def get_players():
     try:
         response = supabase.table('players').select(
-            'id, full_name, team_name, position, headshot_url'
+            'id, full_name, team_name, position, headshot_url, nba_api_id'
         ).execute()
         return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /featured-players
 @app.get("/featured-players")
 def get_featured_players():
     try:
@@ -45,7 +49,6 @@ def get_featured_players():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /player/<player_id>
 @app.get("/player/{player_id}")
 def get_player_info(player_id: str):
     try:
@@ -54,7 +57,6 @@ def get_player_info(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /player/<player_id>/value_history
 @app.get("/player/{player_id}/value_history")
 def get_player_value_history(player_id: str):
     try:
@@ -63,7 +65,6 @@ def get_player_value_history(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /player/<player_id>/stats
 @app.get("/player/{player_id}/stats")
 def get_player_stats(player_id: str):
     try:
@@ -72,14 +73,9 @@ def get_player_stats(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- ⭐️ 4. NEW ENDPOINT ---
 @app.get("/player/{player_id}/season_stats")
 def get_player_season_stats(player_id: str):
-    """
-    Gets the latest season averages for a player.
-    """
     try:
-        # Get the latest season's stats for this player
         response = supabase.table('player_season_stats') \
             .select('*') \
             .eq('player_id', player_id) \
@@ -91,7 +87,6 @@ def get_player_season_stats(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /player/<player_id>/news
 @app.get("/player/{player_id}/news")
 def get_player_news(player_id: str):
     try:
@@ -100,7 +95,6 @@ def get_player_news(player_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /market-movers
 @app.get("/market-movers")
 def get_market_movers():
     try:
@@ -113,3 +107,48 @@ def get_market_movers():
         return {"risers": risers, "fallers": fallers}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/players/compare")
+def get_compare_data(request: CompareRequest):
+    try:
+        player_ids = request.player_ids
+        
+        info_res = supabase.table('players').select('*').in_('id', player_ids).execute()
+        
+        stats_res = supabase.table('player_season_stats') \
+            .select('*').in_('player_id', player_ids) \
+            .order('season', desc=True) \
+            .execute()
+            
+        value_res = supabase.table('player_value_index') \
+            .select('*') \
+            .in_('player_id', player_ids).order('value_date').execute()
+
+        player_data = {}
+        for player in info_res.data:
+            player_data[player['id']] = {
+                "info": player,
+                "season_stats": None, 
+                "value_history": [] 
+            }
+        
+        for stats in stats_res.data:
+            player_id = stats['player_id']
+            if player_id in player_data:
+                if player_data[player_id]['season_stats'] is None:
+                     player_data[player_id]['season_stats'] = stats
+        
+        for value in value_res.data:
+            player_id = value['player_id']
+            if player_id in player_data:
+                player_data[player_id]['value_history'].append({
+                    "value_date": value['value_date'],
+                    "value_score": value['value_score']
+                })
+        
+        return player_data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- ⭐️ REMOVED /standings and /player/{id}/schedule ---

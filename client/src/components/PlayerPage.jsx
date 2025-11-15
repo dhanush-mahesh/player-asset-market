@@ -3,13 +3,14 @@ import axios from 'axios'
 import { ArrowLeft, Loader2, Newspaper, TrendingUp, BarChartHorizontal, CheckSquare } from 'lucide-react'
 import PlayerChart from './Chart'
 import StatCard from './StatCard'
+// --- ⭐️ REMOVED UpcomingSchedule import ---
 
 function PlayerPage({ playerId, onBackClick, apiUrl }) {
   const [player, setPlayer] = useState(null)
   const [stats, setStats] = useState([])
   const [news, setNews] = useState([])
   const [valueHistory, setValueHistory] = useState([])
-  const [seasonStats, setSeasonStats] = useState(null) // <-- ⭐️ 1. ADD NEW STATE
+  const [seasonStats, setSeasonStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -18,20 +19,21 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
     async function fetchPlayerData() {
       setLoading(true)
       try {
-        // --- ⭐️ 2. ADD NEW API CALL TO PROMISE.ALL ---
+        // --- ⭐️ THIS IS THE FIX ⭐️ ---
+        // The list of variables now matches the list of API calls.
         const [infoRes, statsRes, newsRes, valueRes, seasonStatsRes] = await Promise.all([
           axios.get(`${apiUrl}/player/${playerId}`),
           axios.get(`${apiUrl}/player/${playerId}/stats`),
           axios.get(`${apiUrl}/player/${playerId}/news`),
           axios.get(`${apiUrl}/player/${playerId}/value_history`),
-          axios.get(`${apiUrl}/player/${playerId}/season_stats`) // <-- New call
+          axios.get(`${apiUrl}/player/${playerId}/season_stats`)
         ])
         
         setPlayer(infoRes.data)
         setStats(statsRes.data)
         setNews(newsRes.data)
         setValueHistory(valueRes.data)
-        setSeasonStats(seasonStatsRes.data) // <-- ⭐️ 3. SET NEW STATE
+        setSeasonStats(seasonStatsRes.data)
 
       } catch (error) {
         console.error("Error fetching player details:", error)
@@ -61,17 +63,23 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
 
   return (
     <div>
-      <button
-        onClick={onBackClick}
-        className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors mb-6"
-      >
-        <ArrowLeft size={18} />
-        Back to Player List
-      </button>
-
-      {/* Player Header */}
+      {/* ... (Header is unchanged) ... */}
+      <div className="flex justify-between items-center mb-6">
+        <img 
+          src="/logo.png" 
+          alt="Sportfolio Logo" 
+          className="w-12 h-12 cursor-pointer" 
+          onClick={onBackClick}
+        />
+        <button
+          onClick={onBackClick}
+          className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft size={18} />
+          Back to Player List
+        </button>
+      </div>
       <div className="flex justify-between items-center mb-8">
-        {/* ... (Header code is unchanged) ... */}
          <div>
           <h1 className="text-5xl font-bold">{player.full_name}</h1>
           <p className="text-2xl text-neutral-400">{player.team_name} &middot; {player.position || 'N/A'}</p>
@@ -84,15 +92,11 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Left Column: Chart & Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           
-          {/* Chart */}
           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
-            {/* ... (Chart code is unchanged) ... */}
              <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <TrendingUp size={24} />
               Value Index Chart
@@ -101,8 +105,7 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
               <PlayerChart valueHistory={valueHistory} />
             </div>
           </div>
-
-          {/* Recent Game Stats */}
+          
           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <BarChartHorizontal size={24} />
@@ -122,7 +125,6 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
             )}
           </div>
           
-          {/* --- ⭐️ 4. NEW SEASON STATS TABLE --- */}
           <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <CheckSquare size={24} />
@@ -166,9 +168,7 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
           
         </div>
 
-        {/* Right Column: Market Buzz */}
         <div className="lg:col-span-1 space-y-6">
-          {/* ... (Market Buzz code is unchanged) ... */}
            <div className="bg-highlight-dark border border-highlight-light rounded-lg p-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold mb-4">
               <Newspaper size={24} />
@@ -189,6 +189,8 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
               )}
             </div>
           </div>
+          
+          {/* --- ⭐️ REMOVED BROKEN SCHEDULE COMPONENT --- */}
         </div>
       </div>
     </div>

@@ -6,12 +6,15 @@ set -e
 echo "--- STARTING CRON JOB ---"
 
 echo "Running stats scraper..."
-python3 daily_stats_scraper.py
+# Tell python to look inside the 'scraper' folder
+python3 scraper/daily_stats_scraper.py
 
 echo "Running sentiment scraper..."
-python3 daily_sentiment_scraper.py
+# Tell python to look inside the 'scraper' folder
+python3 scraper/daily_sentiment_scraper.py
 
 echo "Running value index calculator..."
-python3 daily_value_index.py
+# Tell python to look inside the 'scraper' folder
+python3 scraper/daily_value_index.py
 
 echo "--- CRON JOB COMPLETE ---"
