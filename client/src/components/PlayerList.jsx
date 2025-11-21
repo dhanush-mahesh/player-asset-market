@@ -5,14 +5,24 @@ import MarketMovers from './MarketMovers'
 function PlayerList({ allPlayers, featuredPlayers, loading, onPlayerClick, apiUrl, compareIds, onToggleCompare, compareLimit }) {
   const [searchQuery, setSearchQuery] = useState("")
 
+  // Helper function to normalize text (remove accents)
+  const normalizeText = (text) => {
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  };
+
   const filteredPlayers = useMemo(() => {
     if (!allPlayers) return [];
     if (searchQuery === "") {
       return allPlayers
     }
-    return allPlayers.filter(player =>
-      player.full_name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    const normalizedSearch = normalizeText(searchQuery);
+    return allPlayers.filter(player => {
+      const normalizedName = normalizeText(player.full_name);
+      return normalizedName.includes(normalizedSearch);
+    })
   }, [searchQuery, allPlayers])
 
   const displayPlayers = searchQuery === "" 

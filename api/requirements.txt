@@ -4,3 +4,4 @@ python-dotenv
 supabase
 numpy
 scikit-learn
+google-generativeai

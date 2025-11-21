@@ -5,8 +5,7 @@ from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import datetime
-# --- ⭐️ 1. ADDED IMPORTS FOR THE NEW ENDPOINT ---
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 # --- 1. SETUP & CONFIG ---
@@ -547,3 +546,110 @@ def get_top_performers():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- CHATBOT ENDPOINT ---
+
+class ChatRequest(BaseModel):
+    message: str
+    history: List[dict] = []
+
+@app.post("/chat")
+def chat_with_assistant(request: ChatRequest):
+    """Chat with NBA assistant powered by Gemini AI with real-time data"""
+    try:
+        import google.generativeai as genai
+        
+        # Configure Gemini API
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        
+        # Create model (using Gemini 2.5 Flash)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Fetch real-time data from database
+        today = datetime.date.today().isoformat()
+        
+        # Get featured players
+        featured_response = supabase.rpc('get_featured_players').execute()
+        featured_players = featured_response.data[:5] if featured_response.data else []
+        
+        # Get market movers
+        movers_response = supabase.rpc('get_market_movers').execute()
+        market_movers = movers_response.data if movers_response.data else []
+        
+        # Get today's live scores
+        try:
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
+            from live_scores import LiveScores
+            live = LiveScores()
+            games = live.get_todays_games()
+            live_summary = f"{len(games)} games today" if games else "No games today"
+        except:
+            live_summary = "Live scores unavailable"
+        
+        # Build enhanced context
+        context = f"""You are an NBA expert assistant for a sports trading platform called Sportfolio. 
+You help users analyze NBA players, develop trading strategies, and make informed decisions.
+
+CURRENT DATA (as of {today}):
+
+Featured Players (Top Value):
+"""
+        for i, player in enumerate(featured_players[:5], 1):
+            context += f"{i}. {player.get('full_name', 'Unknown')} - Value: {player.get('latest_value', 0):.1f}, "
+            context += f"Momentum: {player.get('momentum_status', 'N/A')}\n"
+        
+        context += f"\nMarket Activity:\n"
+        if market_movers:
+            risers = [m for m in market_movers if m.get('value_change', 0) > 0][:3]
+            fallers = [m for m in market_movers if m.get('value_change', 0) < 0][:3]
+            
+            if risers:
+                context += "Top Risers: " + ", ".join([f"{m.get('full_name')} (+{m.get('value_change', 0):.1f})" for m in risers]) + "\n"
+            if fallers:
+                context += "Top Fallers: " + ", ".join([f"{m.get('full_name')} ({m.get('value_change', 0):.1f})" for m in fallers]) + "\n"
+        
+        context += f"\nLive Games: {live_summary}\n"
+        
+        context += """
+PLATFORM FEATURES:
+- Watchlist: Users can save favorite players
+- Trade Simulator: Build and analyze portfolios
+- AI Insights: Buy/sell recommendations, breakout candidates
+- Live Scores: Real-time NBA game data
+- Value Index: Player value scores based on stats + sentiment
+
+GUIDELINES:
+- Provide specific, actionable advice
+- Reference actual player data when available
+- Suggest using platform features (watchlist, simulator, etc.)
+- Keep responses concise (2-3 paragraphs max)
+- Use trading terminology (buy low, sell high, momentum, etc.)
+
+"""
+        
+        # Add conversation history
+        for msg in request.history[-6:]:
+            role = "User" if msg['role'] == 'user' else "Assistant"
+            context += f"{role}: {msg['content']}\n"
+        
+        # Add current message
+        context += f"User: {request.message}\nAssistant:"
+        
+        # Generate response
+        response = model.generate_content(context)
+        
+        return {
+            "response": response.text,
+            "success": True
+        }
+        
+    except Exception as e:
+        print(f"Chat error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "response": "I'm having trouble connecting right now. Please try again in a moment.",
+            "success": False,
+            "error": str(e)
+        }

@@ -4,14 +4,24 @@ import { Search, X } from 'lucide-react';
 function CompareSearch({ allPlayers, onCancel, onSelectPlayer, existingPlayerIds, replacingPlayerName }) {
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Helper function to normalize text (remove accents)
+  const normalizeText = (text) => {
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  };
+
   // Filter the list of all players
   const filteredPlayers = useMemo(() => {
     if (searchQuery === '') {
       return allPlayers;
     }
-    return allPlayers.filter(player =>
-      player.full_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const normalizedSearch = normalizeText(searchQuery);
+    return allPlayers.filter(player => {
+      const normalizedName = normalizeText(player.full_name);
+      return normalizedName.includes(normalizedSearch);
+    });
   }, [searchQuery, allPlayers]);
 
   return (

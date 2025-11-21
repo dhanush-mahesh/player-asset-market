@@ -7,6 +7,7 @@ import AIInsights from './components/AIInsights'
 import LiveScores from './components/LiveScores'
 import Watchlist from './components/Watchlist'
 import TradeSimulator from './components/TradeSimulator'
+import ChatBot from './components/ChatBot'
 
 const API_URL = 'http://127.0.0.1:8000'
 const COMPARE_LIMIT = 3
@@ -244,6 +245,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* ChatBot - Always visible */}
+      <ChatBot apiUrl={API_URL} />
     </div>
   )
 }

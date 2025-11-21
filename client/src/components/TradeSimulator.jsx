@@ -14,12 +14,22 @@ function TradeSimulator({ apiUrl, onPlayerClick }) {
     loadPortfolio();
   }, []);
 
+  // Helper function to normalize text (remove accents)
+  const normalizeText = (text) => {
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  };
+
   useEffect(() => {
     if (searchTerm) {
-      const filtered = allPlayers.filter(player =>
-        player.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        player.team_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const normalizedSearch = normalizeText(searchTerm);
+      const filtered = allPlayers.filter(player => {
+        const normalizedName = normalizeText(player.full_name);
+        const normalizedTeam = normalizeText(player.team_name);
+        return normalizedName.includes(normalizedSearch) || normalizedTeam.includes(normalizedSearch);
+      });
       setFilteredPlayers(filtered.slice(0, 10));
     } else {
       setFilteredPlayers([]);
