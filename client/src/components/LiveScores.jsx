@@ -5,8 +5,10 @@ function LiveScores({ apiUrl }) {
   const [scores, setScores] = useState(null);
   const [topPerformers, setTopPerformers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedGame, setSelectedGame] = useState(null);
   const [boxScore, setBoxScore] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     fetchScores();
@@ -14,7 +16,7 @@ function LiveScores({ apiUrl }) {
     
     // Auto-refresh every 30 seconds for live games
     const interval = setInterval(() => {
-      fetchScores();
+      fetchScores(true); // Silent refresh
       if (selectedGame) {
         fetchBoxScore(selectedGame);
       }
@@ -23,15 +25,24 @@ function LiveScores({ apiUrl }) {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchScores = async () => {
+  const fetchScores = async (silent = false) => {
+    if (!silent) setRefreshing(true);
     try {
       const response = await axios.get(`${apiUrl}/live/scores`);
       setScores(response.data);
+      setLastUpdated(new Date());
       setLoading(false);
     } catch (error) {
       console.error('Error fetching live scores:', error);
       setLoading(false);
+    } finally {
+      if (!silent) setRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchScores();
+    fetchTopPerformers();
   };
 
   const fetchTopPerformers = async () => {
@@ -82,8 +93,12 @@ function LiveScores({ apiUrl }) {
         <div className="relative z-10">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
-                🏀 Live Scores
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+                <svg className="w-10 h-10 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <path d="M12 2 L12 22 M2 12 L22 12 M5 5 L19 19 M19 5 L5 19" stroke="currentColor" strokeWidth="0.5"/>
+                </svg>
+                Live Scores
               </h1>
               <p className="text-neutral-300 text-lg">
                 {new Date(scores.date).toLocaleDateString('en-US', { 
@@ -94,16 +109,28 @@ function LiveScores({ apiUrl }) {
                 })}
               </p>
             </div>
-            <button 
-              onClick={() => {
-                fetchScores();
-                fetchTopPerformers();
-              }}
-              className="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-500 hover:to-purple-500 flex items-center gap-2 transition-all shadow-lg hover:shadow-xl hover:scale-105"
-            >
-              <span className="group-hover:rotate-180 transition-transform duration-500">🔄</span> 
-              <span className="font-semibold">Refresh</span>
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <button 
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-500 hover:to-purple-500 flex items-center gap-2 transition-all shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                <svg 
+                  className={`w-5 h-5 ${refreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="font-semibold">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+              {lastUpdated && (
+                <span className="text-xs text-neutral-500">
+                  Updated {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Summary Cards */}
@@ -238,6 +265,11 @@ function GameCard({ game, onViewDetails }) {
   const awayWinning = game.away_team.score > game.home_team.score;
   const homeWinning = game.home_team.score > game.away_team.score;
 
+  // NBA team logo URL helper
+  const getTeamLogoUrl = (teamTricode) => {
+    return `https://cdn.nba.com/logos/nba/${game.away_team.team_id}/primary/L/logo.svg`;
+  };
+
   return (
     <div className="group relative overflow-hidden bg-gradient-to-br from-neutral-800/50 to-neutral-900/50 border border-neutral-700/50 rounded-2xl p-6 hover:border-blue-500/50 transition-all hover:shadow-xl hover:shadow-blue-500/10 backdrop-blur-sm">
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/5 group-hover:to-purple-500/5 transition-all"></div>
@@ -257,15 +289,28 @@ function GameCard({ game, onViewDetails }) {
         </div>
 
         {/* Away Team */}
-        <div className={`flex justify-between items-center mb-3 p-3 rounded-xl transition-all ${
+        <div className={`flex items-center justify-between mb-3 p-4 rounded-xl transition-all ${
           awayWinning ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30' : 'bg-neutral-800/30'
         }`}>
-          <div>
-            <div className={`text-lg font-bold ${awayWinning ? 'text-blue-300' : 'text-white'}`}>
-              {game.away_team.team_tricode}
-            </div>
-            <div className="text-xs text-neutral-400 font-medium">
-              {game.away_team.wins}-{game.away_team.losses}
+          <div className="flex items-center gap-3 flex-1">
+            <img
+              src={`https://cdn.nba.com/logos/nba/${game.away_team.team_id}/primary/L/logo.svg`}
+              alt={game.away_team.team_tricode}
+              className="w-12 h-12 object-contain"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <div className={`text-lg font-bold ${awayWinning ? 'text-blue-300' : 'text-white'}`}>
+                  {game.away_team.team_tricode}
+                </div>
+                <span className="text-xs text-neutral-500 font-medium">AWAY</span>
+              </div>
+              <div className="text-xs text-neutral-400 font-medium">
+                {game.away_team.wins}-{game.away_team.losses}
+              </div>
             </div>
           </div>
           <div className={`text-3xl font-bold ${awayWinning ? 'text-blue-400' : 'text-neutral-300'}`}>
@@ -273,21 +318,34 @@ function GameCard({ game, onViewDetails }) {
           </div>
         </div>
 
-        {/* VS Divider */}
+        {/* @ Symbol */}
         <div className="flex items-center justify-center my-2">
-          <div className="text-xs text-neutral-500 font-bold">VS</div>
+          <div className="text-sm text-neutral-500 font-bold">@</div>
         </div>
 
         {/* Home Team */}
-        <div className={`flex justify-between items-center mb-4 p-3 rounded-xl transition-all ${
+        <div className={`flex items-center justify-between mb-4 p-4 rounded-xl transition-all ${
           homeWinning ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30' : 'bg-neutral-800/30'
         }`}>
-          <div>
-            <div className={`text-lg font-bold ${homeWinning ? 'text-blue-300' : 'text-white'}`}>
-              {game.home_team.team_tricode}
-            </div>
-            <div className="text-xs text-neutral-400 font-medium">
-              {game.home_team.wins}-{game.home_team.losses}
+          <div className="flex items-center gap-3 flex-1">
+            <img
+              src={`https://cdn.nba.com/logos/nba/${game.home_team.team_id}/primary/L/logo.svg`}
+              alt={game.home_team.team_tricode}
+              className="w-12 h-12 object-contain"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <div className={`text-lg font-bold ${homeWinning ? 'text-blue-300' : 'text-white'}`}>
+                  {game.home_team.team_tricode}
+                </div>
+                <span className="text-xs text-neutral-500 font-medium">HOME</span>
+              </div>
+              <div className="text-xs text-neutral-400 font-medium">
+                {game.home_team.wins}-{game.home_team.losses}
+              </div>
             </div>
           </div>
           <div className={`text-3xl font-bold ${homeWinning ? 'text-blue-400' : 'text-neutral-300'}`}>
@@ -299,9 +357,12 @@ function GameCard({ game, onViewDetails }) {
         {(game.is_live || game.is_final) && onViewDetails && (
           <button
             onClick={onViewDetails}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white py-3 rounded-xl transition-all text-sm font-semibold shadow-lg hover:shadow-xl hover:scale-105"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white py-3 rounded-xl transition-all text-sm font-semibold shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center gap-2"
           >
-            📊 View Box Score
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            View Box Score
           </button>
         )}
       </div>

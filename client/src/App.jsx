@@ -5,19 +5,19 @@ import PlayerPage from './components/PlayerPage'
 import ComparePage from './components/ComparePage'
 import AIInsights from './components/AIInsights'
 import LiveScores from './components/LiveScores'
+import Watchlist from './components/Watchlist'
+import TradeSimulator from './components/TradeSimulator'
 
 const API_URL = 'http://127.0.0.1:8000'
-const COMPARE_LIMIT = 3 // We'll keep the 3-player limit logic
+const COMPARE_LIMIT = 3
 
 function App() {
   const [players, setPlayers] = useState([])
   const [featuredPlayers, setFeaturedPlayers] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedPlayerId, setSelectedPlayerId] = useState(null)
-  const [currentView, setCurrentView] = useState('home') // 'home', 'ai', 'compare'
-  
-  // --- ⭐️ 1. CHANGED STATE TO AN ARRAY [] ---
-  const [compareIds, setCompareIds] = useState([]) // Was new Set()
+  const [currentView, setCurrentView] = useState('home')
+  const [compareIds, setCompareIds] = useState([])
   const [viewingCompare, setViewingCompare] = useState(false)
 
   useEffect(() => {
@@ -98,7 +98,7 @@ function App() {
                   }}
                 />
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-2 items-center">
                 <button
                   onClick={() => {
                     setCurrentView('home');
@@ -111,6 +111,19 @@ function App() {
                   }`}
                 >
                   Home
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('watchlist');
+                    setViewingCompare(false);
+                  }}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                    currentView === 'watchlist'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
+                  }`}
+                >
+                  Watchlist
                 </button>
                 <button
                   onClick={() => {
@@ -127,10 +140,23 @@ function App() {
                 </button>
                 <button
                   onClick={() => {
+                    setCurrentView('simulator');
+                    setViewingCompare(false);
+                  }}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                    currentView === 'simulator'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
+                  }`}
+                >
+                  Simulator
+                </button>
+                <button
+                  onClick={() => {
                     setCurrentView('ai');
                     setViewingCompare(false);
                   }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
                     currentView === 'ai'
                       ? 'bg-blue-600 text-white'
                       : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
@@ -150,6 +176,16 @@ function App() {
             playerId={selectedPlayerId}
             onBackClick={() => setSelectedPlayerId(null)}
             apiUrl={API_URL}
+          />
+        ) : currentView === 'watchlist' ? (
+          <Watchlist
+            apiUrl={API_URL}
+            onPlayerClick={(id) => setSelectedPlayerId(id)}
+          />
+        ) : currentView === 'simulator' ? (
+          <TradeSimulator
+            apiUrl={API_URL}
+            onPlayerClick={(id) => setSelectedPlayerId(id)}
           />
         ) : currentView === 'live' ? (
           <LiveScores
@@ -184,9 +220,8 @@ function App() {
         )}
       </main>
       
-      {/* Compare Bar */}
-      {/* --- ⭐️ 4. CHANGED .size TO .length --- */}
-      {compareIds.length > 0 && !selectedPlayerId && !viewingCompare && (
+      {/* Compare Bar - Only show on home page */}
+      {compareIds.length > 0 && !selectedPlayerId && !viewingCompare && currentView === 'home' && (
         <div className="sticky bottom-0 left-0 w-full bg-highlight-dark border-t-2 border-blue-500 shadow-lg p-4">
           <div className="max-w-7xl mx-auto flex justify-between items-center">
             <p className="text-lg font-semibold">Comparing {compareIds.length} / {COMPARE_LIMIT} players</p>

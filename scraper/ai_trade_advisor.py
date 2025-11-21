@@ -263,30 +263,72 @@ class AITradeAdvisor:
             avg_confidence = np.mean([p['confidence'] for p in portfolio_data])
             avg_momentum = np.mean([p['momentum'] for p in portfolio_data])
             
-            # Risk assessment
-            high_risk = sum(1 for p in portfolio_data if p['trend'] < -5)
-            medium_risk = sum(1 for p in portfolio_data if -5 <= p['trend'] < -2)
-            low_risk = sum(1 for p in portfolio_data if p['trend'] >= -2)
+            # Risk assessment based on multiple factors (mutually exclusive)
+            high_risk_players = []
+            medium_risk_players = []
+            low_risk_players = []
+            
+            for p in portfolio_data:
+                # High Risk: Steep decline OR very low value
+                if p['trend'] < -20 or p['value_score'] < 30:
+                    high_risk_players.append(p)
+                # Medium Risk: Moderate decline OR moderate value (but not high risk)
+                elif (-20 <= p['trend'] < -5) or (30 <= p['value_score'] < 50):
+                    medium_risk_players.append(p)
+                # Low Risk: Stable/rising AND good value
+                else:
+                    low_risk_players.append(p)
+            
+            high_risk = len(high_risk_players)
+            medium_risk = len(medium_risk_players)
+            low_risk = len(low_risk_players)
             
             # Diversification score (0-100)
             value_std = np.std([p['value_score'] for p in portfolio_data])
             diversification = min(100, (value_std / avg_value) * 100) if avg_value > 0 else 0
             
-            # Overall risk score (0-100, lower is better)
-            risk_score = (
-                (high_risk / len(portfolio_data)) * 50 +
-                (medium_risk / len(portfolio_data)) * 25 +
-                (1 - avg_confidence) * 25
-            ) * 100
+            # Calculate average trend
+            avg_trend = np.mean([p['trend'] for p in portfolio_data])
+            
+            # Overall risk score (0-100, higher is riskier)
+            risk_score = 0
+            
+            # Factor 1: Proportion of risky players (0-40 points)
+            risk_score += (high_risk / len(portfolio_data)) * 40
+            risk_score += (medium_risk / len(portfolio_data)) * 20
+            
+            # Factor 2: Average value score (0-30 points, inverse)
+            if avg_value < 40:
+                risk_score += 30
+            elif avg_value < 60:
+                risk_score += 15
+            
+            # Factor 3: Average trend (0-30 points)
+            if avg_trend < -10:
+                risk_score += 30
+            elif avg_trend < -5:
+                risk_score += 20
+            elif avg_trend < 0:
+                risk_score += 10
+            
+            # Add individual risk classification to each player
+            for p in portfolio_data:
+                if p['trend'] < -20 or p['value_score'] < 30:
+                    p['individual_risk'] = 'High'
+                elif (-20 <= p['trend'] < -5) or (30 <= p['value_score'] < 50):
+                    p['individual_risk'] = 'Medium'
+                else:
+                    p['individual_risk'] = 'Low'
             
             return {
                 'portfolio_size': len(portfolio_data),
-                'avg_value': round(avg_value, 2),
+                'avg_value_score': round(avg_value, 2),
                 'avg_confidence': round(avg_confidence, 3),
                 'avg_momentum': round(avg_momentum, 3),
                 'risk_score': round(risk_score, 2),
-                'risk_level': 'high' if risk_score > 60 else 'medium' if risk_score > 30 else 'low',
-                'diversification': round(diversification, 2),
+                'risk_level': 'High' if risk_score > 40 else 'Medium' if risk_score > 20 else 'Low',
+                'avg_trend': round(avg_trend, 2),
+                'diversification_score': round(diversification, 1),
                 'high_risk_players': high_risk,
                 'medium_risk_players': medium_risk,
                 'low_risk_players': low_risk,
@@ -302,23 +344,38 @@ class AITradeAdvisor:
         """Generate actionable recommendations for portfolio"""
         recommendations = []
         
-        if risk_score > 60:
-            recommendations.append("⚠️ High risk detected. Consider diversifying or reducing exposure to declining players.")
+        # Analyze value scores
+        low_value = [p for p in portfolio_data if p['value_score'] < 40]
+        high_value = [p for p in portfolio_data if p['value_score'] >= 70]
         
-        falling_players = [p for p in portfolio_data if p['trend'] < -5]
-        if falling_players:
-            recommendations.append(f"📉 {len(falling_players)} player(s) declining rapidly. Review: {', '.join([p['player_name'] for p in falling_players[:3]])}")
+        # Analyze trends
+        steep_decline = [p for p in portfolio_data if p['trend'] < -20]
+        declining = [p for p in portfolio_data if -20 <= p['trend'] < -5]
+        rising = [p for p in portfolio_data if p['trend'] > 10]
         
-        low_confidence = [p for p in portfolio_data if p['confidence'] < 0.3]
-        if low_confidence:
-            recommendations.append(f"❓ {len(low_confidence)} player(s) have low confidence scores. Monitor closely.")
+        # Generate recommendations based on analysis
+        if steep_decline:
+            recommendations.append(f"⚠️ {len(steep_decline)} player(s) declining rapidly (>20%): {', '.join([p['player_name'] for p in steep_decline[:3]])}. Consider selling.")
         
-        rising_players = [p for p in portfolio_data if p['trend'] > 5]
-        if rising_players:
-            recommendations.append(f"📈 {len(rising_players)} player(s) rising fast. Consider holding: {', '.join([p['player_name'] for p in rising_players[:3]])}")
+        if declining:
+            recommendations.append(f"📉 {len(declining)} player(s) showing negative trends: {', '.join([p['player_name'] for p in declining[:3]])}. Monitor closely.")
         
-        if not recommendations:
-            recommendations.append("✅ Portfolio looks healthy. Continue monitoring trends.")
+        if low_value:
+            recommendations.append(f"⬇️ {len(low_value)} player(s) have low value scores (<40): {', '.join([p['player_name'] for p in low_value[:3]])}. High risk.")
+        
+        if rising:
+            recommendations.append(f"📈 {len(rising)} player(s) rising fast: {', '.join([p['player_name'] for p in rising[:3]])}. Good holds.")
+        
+        if high_value:
+            recommendations.append(f"⭐ {len(high_value)} player(s) have strong value scores (>70): {', '.join([p['player_name'] for p in high_value[:3]])}. Core assets.")
+        
+        # Overall assessment
+        if risk_score > 40:
+            recommendations.append("🔴 Overall: High risk portfolio. Consider rebalancing with more stable players.")
+        elif risk_score > 20:
+            recommendations.append("🟡 Overall: Medium risk portfolio. Some concerns but manageable.")
+        else:
+            recommendations.append("🟢 Overall: Low risk portfolio. Well-balanced with strong fundamentals.")
         
         return recommendations
 

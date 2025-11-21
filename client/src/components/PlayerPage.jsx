@@ -11,6 +11,29 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
   const [valueHistory, setValueHistory] = useState([])
   const [seasonStats, setSeasonStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [isInWatchlist, setIsInWatchlist] = useState(false)
+
+  // Check if player is in watchlist
+  useEffect(() => {
+    const watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+    setIsInWatchlist(watchlist.includes(playerId));
+  }, [playerId]);
+
+  const toggleWatchlist = () => {
+    const watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+    
+    if (isInWatchlist) {
+      // Remove from watchlist
+      const updated = watchlist.filter(id => id !== playerId);
+      localStorage.setItem('watchlist', JSON.stringify(updated));
+      setIsInWatchlist(false);
+    } else {
+      // Add to watchlist
+      const updated = [...watchlist, playerId];
+      localStorage.setItem('watchlist', JSON.stringify(updated));
+      setIsInWatchlist(true);
+    }
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -92,13 +115,27 @@ function PlayerPage({ playerId, onBackClick, apiUrl }) {
           onClick={onBackClick}
         />
         
-        <button
-          onClick={onBackClick}
-          className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft size={18} />
-          Back to Player List
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={toggleWatchlist}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+              isInWatchlist
+                ? 'bg-yellow-600 text-white hover:bg-yellow-500'
+                : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'
+            }`}
+          >
+            <span>{isInWatchlist ? '⭐' : '☆'}</span>
+            {isInWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
+          </button>
+          
+          <button
+            onClick={onBackClick}
+            className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft size={18} />
+            Back to Player List
+          </button>
+        </div>
       </div>
 
       {/* Player Header */}

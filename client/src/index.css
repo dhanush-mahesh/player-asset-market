@@ -5,10 +5,6 @@
 @tailwind utilities;
 
 body {
-    /*
-      This creates a very large, very dark gray "glow"
-      from the top center of the page, fading to pure black.
-    */
     background-color: #000000;
     background-image: radial-gradient(
       ellipse 80% 50% at 50% -20%,
