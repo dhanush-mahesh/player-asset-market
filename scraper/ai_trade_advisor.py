@@ -76,50 +76,93 @@ class AITradeAdvisor:
         print("\n🔍 Finding Buy Opportunities...")
         
         try:
+            # Get the most recent date available
+            latest_date_response = supabase.table('player_value_index').select('value_date').order('value_date', desc=True).limit(1).execute()
+            if not latest_date_response.data:
+                print("No data found in player_value_index table")
+                return []
+            
+            latest_date = latest_date_response.data[0]['value_date']
+            print(f"Using data from: {latest_date}")
+            
             # Get latest value data with player info
             response = supabase.table('player_value_index').select(
                 'player_id, value_score, stat_component, sentiment_component, '
                 'momentum_score, confidence_score'
-            ).eq('value_date', self.today).execute()
+            ).eq('value_date', latest_date).execute()
             
-            opportunities = []
-            
+            # Pre-filter candidates
+            candidates = []
             for record in response.data:
                 stat = record['stat_component']
                 sentiment = record['sentiment_component']
                 confidence = record['confidence_score']
                 
                 # Buy signal: High stats, low/negative sentiment, decent confidence
-                if stat > 30 and sentiment < 0 and confidence > 0.3:
-                    # Get player name
-                    player = supabase.table('players').select('full_name, team_name, position').eq('id', record['player_id']).single().execute()
-                    
-                    # Calculate opportunity score
+                if stat > 30 and sentiment < 0 and confidence > 0.1:
                     opportunity_score = (stat * 0.6) + (abs(sentiment) * 30 * 0.3) + (confidence * 10)
-                    
-                    trend, trend_class = self.calculate_value_trend(record['player_id'])
-                    
-                    opportunities.append({
+                    candidates.append({
                         'player_id': record['player_id'],
-                        'player_name': player.data['full_name'],
-                        'team': player.data['team_name'],
-                        'position': player.data['position'],
                         'value_score': record['value_score'],
                         'stat_component': stat,
                         'sentiment_component': sentiment,
                         'confidence': confidence,
                         'opportunity_score': opportunity_score,
-                        'trend': trend,
-                        'trend_class': trend_class,
-                        'reason': f"Strong stats ({stat:.1f}) but negative sentiment ({sentiment:.2f}). Market undervaluing performance.",
-                        'action': 'BUY',
-                        'urgency': 'high' if confidence > 0.5 else 'medium'
+                        'momentum_score': record['momentum_score']
                     })
             
-            # Sort by opportunity score
-            opportunities.sort(key=lambda x: x['opportunity_score'], reverse=True)
+            # Sort and limit before fetching player details
+            candidates.sort(key=lambda x: x['opportunity_score'], reverse=True)
+            top_candidates = candidates[:limit]
             
-            return opportunities[:limit]
+            # Batch fetch player details
+            player_ids = [c['player_id'] for c in top_candidates]
+            players_response = supabase.table('players').select('id, full_name, team_name, position').in_('id', player_ids).execute()
+            players_map = {p['id']: p for p in players_response.data}
+            
+            # Build final opportunities list
+            opportunities = []
+            for candidate in top_candidates:
+                player = players_map.get(candidate['player_id'])
+                if not player:
+                    continue
+                
+                # Use momentum as a proxy for trend (faster than calculating)
+                momentum = candidate['momentum_score']
+                if momentum > 0.3:
+                    trend_class = "rising_fast"
+                    trend = momentum * 100
+                elif momentum > 0:
+                    trend_class = "rising"
+                    trend = momentum * 100
+                elif momentum < -0.3:
+                    trend_class = "falling_fast"
+                    trend = momentum * 100
+                elif momentum < 0:
+                    trend_class = "falling"
+                    trend = momentum * 100
+                else:
+                    trend_class = "stable"
+                    trend = 0
+                
+                opportunities.append({
+                    'player_id': candidate['player_id'],
+                    'player_name': player['full_name'],
+                    'team': player['team_name'],
+                    'position': player['position'],
+                    'value_score': candidate['value_score'],
+                    'stat_component': candidate['stat_component'],
+                    'sentiment_component': candidate['sentiment_component'],
+                    'confidence': candidate['confidence'],
+                    'opportunity_score': candidate['opportunity_score'],
+                    'trend': trend,
+                    'trend_class': trend_class,
+                    'reason': f"Strong stats ({candidate['stat_component']:.1f}) but negative sentiment ({candidate['sentiment_component']:.2f}). Market undervaluing performance.",
+                    'action': 'BUY',
+                    'urgency': 'high' if candidate['confidence'] > 0.5 else 'medium'
+                })
+            
+            return opportunities
             
         except Exception as e:
             print(f"Error finding buy opportunities: {e}")
@@ -130,47 +173,77 @@ class AITradeAdvisor:
         print("\n🔍 Finding Sell Opportunities...")
         
         try:
+            # Get the most recent date available
+            latest_date_response = supabase.table('player_value_index').select('value_date').order('value_date', desc=True).limit(1).execute()
+            if not latest_date_response.data:
+                return []
+            
+            latest_date = latest_date_response.data[0]['value_date']
+            
             response = supabase.table('player_value_index').select(
                 'player_id, value_score, stat_component, sentiment_component, '
                 'momentum_score, confidence_score'
-            ).eq('value_date', self.today).execute()
+            ).eq('value_date', latest_date).execute()
             
-            opportunities = []
-            
+            # Pre-filter candidates
+            candidates = []
             for record in response.data:
                 stat = record['stat_component']
                 sentiment = record['sentiment_component']
                 confidence = record['confidence_score']
                 
                 # Sell signal: Low stats, high sentiment, decent confidence
-                if stat < 30 and sentiment > 0.3 and confidence > 0.3:
-                    player = supabase.table('players').select('full_name, team_name, position').eq('id', record['player_id']).single().execute()
-                    
-                    # Calculate risk score
+                if stat < 30 and sentiment > 0.2 and confidence > 0.1:
                     risk_score = (sentiment * 50) - (stat * 0.5) + (confidence * 10)
-                    
-                    trend, trend_class = self.calculate_value_trend(record['player_id'])
-                    
-                    opportunities.append({
+                    candidates.append({
                         'player_id': record['player_id'],
-                        'player_name': player.data['full_name'],
-                        'team': player.data['team_name'],
-                        'position': player.data['position'],
                         'value_score': record['value_score'],
                         'stat_component': stat,
                         'sentiment_component': sentiment,
                         'confidence': confidence,
                         'risk_score': risk_score,
-                        'trend': trend,
-                        'trend_class': trend_class,
-                        'reason': f"High sentiment ({sentiment:.2f}) but weak stats ({stat:.1f}). Market overvaluing hype.",
-                        'action': 'SELL',
-                        'urgency': 'high' if trend < -2 else 'medium'
+                        'momentum_score': record['momentum_score']
                     })
             
-            opportunities.sort(key=lambda x: x['risk_score'], reverse=True)
+            # Sort and limit before fetching player details
+            candidates.sort(key=lambda x: x['risk_score'], reverse=True)
+            top_candidates = candidates[:limit]
             
-            return opportunities[:limit]
+            # Batch fetch player details
+            player_ids = [c['player_id'] for c in top_candidates]
+            players_response = supabase.table('players').select('id, full_name, team_name, position').in_('id', player_ids).execute()
+            players_map = {p['id']: p for p in players_response.data}
+            
+            # Build final opportunities list
+            opportunities = []
+            for candidate in top_candidates:
+                player = players_map.get(candidate['player_id'])
+                if not player:
+                    continue
+                
+                # Use momentum as trend proxy
+                momentum = candidate['momentum_score']
+                trend = momentum * 100
+                trend_class = "falling_fast" if momentum < -0.3 else "falling" if momentum < 0 else "stable"
+                
+                opportunities.append({
+                    'player_id': candidate['player_id'],
+                    'player_name': player['full_name'],
+                    'team': player['team_name'],
+                    'position': player['position'],
+                    'value_score': candidate['value_score'],
+                    'stat_component': candidate['stat_component'],
+                    'sentiment_component': candidate['sentiment_component'],
+                    'confidence': candidate['confidence'],
+                    'risk_score': candidate['risk_score'],
+                    'trend': trend,
+                    'trend_class': trend_class,
+                    'reason': f"High sentiment ({candidate['sentiment_component']:.2f}) but weak stats ({candidate['stat_component']:.1f}). Market overvaluing hype.",
+                    'action': 'SELL',
+                    'urgency': 'high' if trend < -2 else 'medium'
+                })
+            
+            return opportunities
             
         except Exception as e:
             print(f"Error finding sell opportunities: {e}")
@@ -181,13 +254,20 @@ class AITradeAdvisor:
         print("\n🚀 Finding Breakout Candidates...")
         
         try:
+            # Get the most recent date available
+            latest_date_response = supabase.table('player_value_index').select('value_date').order('value_date', desc=True).limit(1).execute()
+            if not latest_date_response.data:
+                return []
+            
+            latest_date = latest_date_response.data[0]['value_date']
+            
             response = supabase.table('player_value_index').select(
                 'player_id, value_score, stat_component, sentiment_component, '
                 'momentum_score, confidence_score'
-            ).eq('value_date', self.today).execute()
+            ).eq('value_date', latest_date).execute()
             
-            candidates = []
-            
+            # Pre-filter candidates
+            candidates_list = []
             for record in response.data:
                 momentum = record['momentum_score']
                 sentiment = record['sentiment_component']
@@ -195,34 +275,58 @@ class AITradeAdvisor:
                 confidence = record['confidence_score']
                 
                 # Breakout signal: Positive momentum, rising sentiment, improving stats
-                if momentum > 0.2 and sentiment > 0 and stat > 20:
-                    player = supabase.table('players').select('full_name, team_name, position').eq('id', record['player_id']).single().execute()
-                    
+                if momentum > 0.15 and sentiment >= 0 and stat > 15:
                     breakout_score = (momentum * 50) + (sentiment * 30) + (stat * 0.3) + (confidence * 10)
-                    
-                    trend, trend_class = self.calculate_value_trend(record['player_id'])
-                    
-                    candidates.append({
+                    candidates_list.append({
                         'player_id': record['player_id'],
-                        'player_name': player.data['full_name'],
-                        'team': player.data['team_name'],
-                        'position': player.data['position'],
                         'value_score': record['value_score'],
                         'momentum_score': momentum,
                         'sentiment_component': sentiment,
                         'stat_component': stat,
                         'confidence': confidence,
-                        'breakout_score': breakout_score,
-                        'trend': trend,
-                        'trend_class': trend_class,
-                        'reason': f"Strong momentum ({momentum:.2f}) with positive sentiment. Stats trending up.",
-                        'action': 'WATCH',
-                        'potential': 'high' if breakout_score > 50 else 'medium'
+                        'breakout_score': breakout_score
                     })
             
-            candidates.sort(key=lambda x: x['breakout_score'], reverse=True)
+            # Sort and limit before fetching player details
+            candidates_list.sort(key=lambda x: x['breakout_score'], reverse=True)
+            top_candidates = candidates_list[:limit]
             
-            return candidates[:limit]
+            # Batch fetch player details
+            player_ids = [c['player_id'] for c in top_candidates]
+            players_response = supabase.table('players').select('id, full_name, team_name, position').in_('id', player_ids).execute()
+            players_map = {p['id']: p for p in players_response.data}
+            
+            # Build final candidates list
+            candidates = []
+            for candidate in top_candidates:
+                player = players_map.get(candidate['player_id'])
+                if not player:
+                    continue
+                
+                # Use momentum as trend proxy
+                momentum = candidate['momentum_score']
+                trend = momentum * 100
+                trend_class = "rising_fast" if momentum > 0.3 else "rising"
+                
+                candidates.append({
+                    'player_id': candidate['player_id'],
+                    'player_name': player['full_name'],
+                    'team': player['team_name'],
+                    'position': player['position'],
+                    'value_score': candidate['value_score'],
+                    'momentum_score': candidate['momentum_score'],
+                    'sentiment_component': candidate['sentiment_component'],
+                    'stat_component': candidate['stat_component'],
+                    'confidence': candidate['confidence'],
+                    'breakout_score': candidate['breakout_score'],
+                    'trend': trend,
+                    'trend_class': trend_class,
+                    'reason': f"Strong momentum ({candidate['momentum_score']:.2f}) with positive sentiment. Stats trending up.",
+                    'action': 'WATCH',
+                    'potential': 'high' if candidate['breakout_score'] > 50 else 'medium'
+                })
+            
+            return candidates
             
         except Exception as e:
             print(f"Error finding breakout candidates: {e}")
@@ -233,27 +337,53 @@ class AITradeAdvisor:
         print(f"\n📊 Analyzing Portfolio Risk for {len(player_ids)} players...")
         
         try:
-            portfolio_data = []
+            # Get the most recent date available
+            latest_date_response = supabase.table('player_value_index').select('value_date').order('value_date', desc=True).limit(1).execute()
+            if not latest_date_response.data:
+                raise Exception("No data found in player_value_index table")
             
-            for player_id in player_ids:
-                response = supabase.table('player_value_index').select(
-                    'value_score, stat_component, sentiment_component, '
-                    'momentum_score, confidence_score'
-                ).eq('player_id', player_id).eq('value_date', self.today).single().execute()
+            latest_date = latest_date_response.data[0]['value_date']
+            print(f"Using data from: {latest_date}")
+            
+            # Batch fetch player value data
+            value_response = supabase.table('player_value_index').select(
+                'player_id, value_score, stat_component, sentiment_component, '
+                'momentum_score, confidence_score'
+            ).in_('player_id', player_ids).eq('value_date', latest_date).execute()
+            
+            # Batch fetch player names
+            players_response = supabase.table('players').select('id, full_name').in_('id', player_ids).execute()
+            players_map = {p['id']: p['full_name'] for p in players_response.data}
+            
+            portfolio_data = []
+            for record in value_response.data:
+                player_id = record['player_id']
+                player_name = players_map.get(player_id, 'Unknown')
                 
-                if response.data:
-                    player = supabase.table('players').select('full_name').eq('id', player_id).single().execute()
-                    trend, trend_class = self.calculate_value_trend(player_id)
-                    
-                    portfolio_data.append({
-                        'player_id': player_id,
-                        'player_name': player.data['full_name'],
-                        'value_score': response.data['value_score'],
-                        'confidence': response.data['confidence_score'],
-                        'momentum': response.data['momentum_score'],
-                        'trend': trend,
-                        'trend_class': trend_class
-                    })
+                # Use momentum as trend proxy (much faster than historical calculation)
+                momentum = record['momentum_score']
+                trend = momentum * 100
+                
+                if momentum > 0.3:
+                    trend_class = "rising_fast"
+                elif momentum > 0:
+                    trend_class = "rising"
+                elif momentum < -0.3:
+                    trend_class = "falling_fast"
+                elif momentum < 0:
+                    trend_class = "falling"
+                else:
+                    trend_class = "stable"
+                
+                portfolio_data.append({
+                    'player_id': player_id,
+                    'player_name': player_name,
+                    'value_score': record['value_score'],
+                    'confidence': record['confidence_score'],
+                    'momentum': momentum,
+                    'trend': trend,
+                    'trend_class': trend_class
+                })
             
             if not portfolio_data:
                 return {'error': 'No data found for portfolio'}

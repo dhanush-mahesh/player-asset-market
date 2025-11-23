@@ -323,7 +323,18 @@ def analyze_portfolio(request: CompareRequest):
         
         return analysis
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return a friendly error message instead of crashing
+        return {
+            "error": "insufficient_data",
+            "message": "Portfolio analysis requires recent player data. Please run the scraper to populate the database.",
+            "risk_level": "Unknown",
+            "risk_score": 0,
+            "players": [],
+            "recommendations": [
+                "Run the scraper to get the latest player data: cd scraper && bash run_enhanced.sh",
+                "Portfolio analysis will be available once data is populated"
+            ]
+        }
 
 @app.get("/ai/daily-insights")
 def get_daily_insights():

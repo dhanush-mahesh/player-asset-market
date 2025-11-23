@@ -71,7 +71,12 @@ function TradeSimulator({ apiUrl, onPlayerClick }) {
   };
 
   const removeFromPortfolio = (playerId) => {
-    savePortfolio(portfolio.filter(p => p.id !== playerId));
+    const newPortfolio = portfolio.filter(p => p.id !== playerId);
+    savePortfolio(newPortfolio);
+    // Reset analysis when portfolio changes
+    if (newPortfolio.length === 0) {
+      setPortfolioAnalysis(null);
+    }
   };
 
   const updateShares = (playerId, shares) => {
@@ -89,9 +94,19 @@ function TradeSimulator({ apiUrl, onPlayerClick }) {
       const response = await axios.post(`${apiUrl}/ai/portfolio-analysis`, {
         player_ids: playerIds
       });
-      setPortfolioAnalysis(response.data);
+      // Check if response has error flag
+      if (response.data.error === 'insufficient_data') {
+        setPortfolioAnalysis(response.data);
+      } else {
+        setPortfolioAnalysis(response.data);
+      }
     } catch (error) {
       console.error('Error analyzing portfolio:', error);
+      setPortfolioAnalysis({
+        error: 'network_error',
+        message: 'Unable to connect to the API. Please ensure the server is running.',
+        recommendations: ['Check if the API server is running on port 8000']
+      });
     } finally {
       setLoading(false);
     }
@@ -242,6 +257,35 @@ function TradeSimulator({ apiUrl, onPlayerClick }) {
             Portfolio Analysis
           </h2>
           
+          {/* Error State */}
+          {portfolioAnalysis.error && (
+            <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-3">
+                <svg className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-yellow-400 mb-2">Analysis Unavailable</h3>
+                  <p className="text-neutral-300 mb-4">{portfolioAnalysis.message}</p>
+                  {portfolioAnalysis.recommendations && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-neutral-400">What to do:</p>
+                      {portfolioAnalysis.recommendations.map((rec, i) => (
+                        <div key={i} className="text-sm text-neutral-400 flex items-start gap-2">
+                          <span className="text-blue-400">•</span>
+                          <span>{rec}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Normal Analysis Display */}
+          {!portfolioAnalysis.error && (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <div className="bg-neutral-800/50 rounded-xl p-6 border border-neutral-700/50">
               <div className="text-sm text-neutral-400 mb-2">Portfolio Risk</div>
@@ -315,6 +359,8 @@ function TradeSimulator({ apiUrl, onPlayerClick }) {
                 ))}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}
