@@ -58,6 +58,14 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
             print(f"  No player stats found for game {game_id}.")
             return [], [], []
         
+        # Build opponent map: for each team, find their opponent
+        teams_in_game = player_stats_df['teamName'].unique()
+        opponent_map = {}
+        if len(teams_in_game) == 2:
+            opponent_map[teams_in_game[0]] = teams_in_game[1]
+            opponent_map[teams_in_game[1]] = teams_in_game[0]
+            print(f"    Matchup: {teams_in_game[0]} vs {teams_in_game[1]}")
+        
         for index, row in player_stats_df.iterrows():
             if not row['minutes'] or row['minutes'].startswith('PT00M'):
                 continue
@@ -68,6 +76,9 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
             position = row['position'] or "N/A"
             headshot_url = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_api_id}.png"
             
+            # Get opponent team for this player
+            opponent_team = opponent_map.get(team_name, None)
+            
             stat_line = {
                 "nba_api_id_temp": nba_api_id,
                 "game_date": game_date.isoformat(),
@@ -76,7 +87,9 @@ def get_stats_from_game_id(game_id: str, game_date: datetime.date):
                 "assists": int(row['assists'] or 0),
                 "steals": int(row['steals'] or 0),
                 "blocks": int(row['blocks'] or 0),
-                "turnovers": int(row['turnovers'] or 0)
+                "turnovers": int(row['turnovers'] or 0),
+                "three_pointers_made": int(row['threePointersMade'] or 0),  # Add 3PM
+                "opponent_team": opponent_team  # Add opponent info
             }
             player_stats_list.append(stat_line)
             player_info_list.add((nba_api_id, player_name, team_name, position, headshot_url))

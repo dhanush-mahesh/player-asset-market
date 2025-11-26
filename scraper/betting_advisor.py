@@ -43,6 +43,206 @@ class BettingAdvisor:
         normalized = normalized.replace(' jr', '').replace(' sr', '').replace(' iii', '').replace(' ii', '')
         return normalized
     
+    def _format_prop_name(self, prop_type: str) -> str:
+        """Format prop type for display"""
+        prop_names = {
+            'points': 'Points',
+            'rebounds': 'Rebounds',
+            'assists': 'Assists',
+            'threes': '3-Pointers',
+            'blocks': 'Blocks',
+            'steals': 'Steals',
+            'turnovers': 'Turnovers',
+            'points_rebounds_assists': 'Pts+Reb+Ast',
+            'points_rebounds': 'Pts+Reb',
+            'points_assists': 'Pts+Ast',
+            'rebounds_assists': 'Reb+Ast',
+        }
+        return prop_names.get(prop_type, prop_type.capitalize())
+    
+    def _get_default_consistency_response(self) -> Dict:
+        """Return default consistency response when data is insufficient"""
+        return {
+            'rating': 'Unknown',
+            'std': 0,
+            'matchup_adjusted': False,
+            'explanation': 'Insufficient data'
+        }
+    
+    def _get_matchup_aware_consistency(self, player_id: str, prop_type: str, opponent_team: str = None) -> Dict:
+        """
+        Calculate consistency that accounts for opponent strength and matchup history
+        
+        Returns:
+            dict with 'rating' (High/Medium/Low), 'std' (standard deviation), 
+            'matchup_adjusted' (bool), and 'explanation' (str)
+        """
+        try:
+            import numpy as np
+            
+            # For combo props, we can't query them directly - calculate from components
+            if prop_type in ['points_rebounds_assists', 'points_rebounds', 'points_assists', 'rebounds_assists']:
+                # Get component stats
+                try:
+                    stats_response = supabase.table('daily_player_stats').select(
+                        'points, rebounds, assists, game_date, opponent_team'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(10).execute()
+                    has_opponent_data = True
+                except:
+                    stats_response = supabase.table('daily_player_stats').select(
+                        'points, rebounds, assists, game_date'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(10).execute()
+                    has_opponent_data = False
+                
+                if not stats_response.data or len(stats_response.data) < 3:
+                    return self._get_default_consistency_response()
+                
+                # Calculate combo values
+                games = stats_response.data
+                if prop_type == 'points_rebounds_assists':
+                    all_stats = [g['points'] + g['rebounds'] + g['assists'] for g in games if all(g.get(k) is not None for k in ['points', 'rebounds', 'assists'])]
+                elif prop_type == 'points_rebounds':
+                    all_stats = [g['points'] + g['rebounds'] for g in games if all(g.get(k) is not None for k in ['points', 'rebounds'])]
+                elif prop_type == 'points_assists':
+                    all_stats = [g['points'] + g['assists'] for g in games if all(g.get(k) is not None for k in ['points', 'assists'])]
+                elif prop_type == 'rebounds_assists':
+                    all_stats = [g['rebounds'] + g['assists'] for g in games if all(g.get(k) is not None for k in ['rebounds', 'assists'])]
+            else:
+                # Single stat - query directly
+                # Get last 10 games - try with opponent_team first, fall back if column doesn't exist
+                try:
+                    stats_response = supabase.table('daily_player_stats').select(
+                        f'{prop_type}, game_date, opponent_team'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(10).execute()
+                    has_opponent_data = True
+                except:
+                    # Column doesn't exist, get stats without opponent info
+                    stats_response = supabase.table('daily_player_stats').select(
+                        f'{prop_type}, game_date'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(10).execute()
+                    has_opponent_data = False
+                
+                if not stats_response.data or len(stats_response.data) < 3:
+                    return self._get_default_consistency_response()
+                
+                games = stats_response.data
+                all_stats = [g[prop_type] for g in games if g.get(prop_type) is not None]
+            
+            if len(all_stats) < 3:
+                return self._get_default_consistency_response()
+            
+            # Calculate raw consistency
+            raw_std = np.std(all_stats)
+            
+            # If we have opponent info and opponent_team column exists, adjust for matchup
+            if opponent_team and has_opponent_data:
+                # Find games against similar opponents (same team or similar defensive rating)
+                matchup_games = [g for g in games if g.get('opponent_team') == opponent_team]
+                
+                if len(matchup_games) >= 2:
+                    # We have head-to-head history
+                    matchup_stats = [g[prop_type] for g in matchup_games if g.get(prop_type) is not None]
+                    matchup_std = np.std(matchup_stats)
+                    matchup_avg = np.mean(matchup_stats)
+                    
+                    # Use matchup-specific consistency
+                    if matchup_std < 3:
+                        rating = 'High'
+                    elif matchup_std < 5:
+                        rating = 'Medium'
+                    else:
+                        rating = 'Low'
+                    
+                    return {
+                        'rating': rating,
+                        'std': matchup_std,
+                        'matchup_adjusted': True,
+                        'matchup_avg': matchup_avg,
+                        'matchup_games': len(matchup_games),
+                        'explanation': f'vs {opponent_team}: {len(matchup_games)} game history'
+                    }
+            
+            # Fallback to raw consistency
+            if raw_std < 3:
+                rating = 'High'
+            elif raw_std < 5:
+                rating = 'Medium'
+            else:
+                rating = 'Low'
+            
+            return {
+                'rating': rating,
+                'std': raw_std,
+                'matchup_adjusted': False,
+                'explanation': f'Last {len(all_stats)} games (no matchup data)'
+            }
+            
+        except Exception as e:
+            # Silently fall back to basic calculation
+            import numpy as np
+            try:
+                # For combo props, calculate from components
+                if prop_type in ['points_rebounds_assists', 'points_rebounds', 'points_assists', 'rebounds_assists']:
+                    stats_response = supabase.table('daily_player_stats').select(
+                        'points, rebounds, assists'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(5).execute()
+                    
+                    if stats_response.data and len(stats_response.data) >= 3:
+                        if prop_type == 'points_rebounds_assists':
+                            all_stats = [g['points'] + g['rebounds'] + g['assists'] for g in stats_response.data if all(g.get(k) is not None for k in ['points', 'rebounds', 'assists'])]
+                        elif prop_type == 'points_rebounds':
+                            all_stats = [g['points'] + g['rebounds'] for g in stats_response.data if all(g.get(k) is not None for k in ['points', 'rebounds'])]
+                        elif prop_type == 'points_assists':
+                            all_stats = [g['points'] + g['assists'] for g in stats_response.data if all(g.get(k) is not None for k in ['points', 'assists'])]
+                        elif prop_type == 'rebounds_assists':
+                            all_stats = [g['rebounds'] + g['assists'] for g in stats_response.data if all(g.get(k) is not None for k in ['rebounds', 'assists'])]
+                        
+                        if len(all_stats) >= 3:
+                            raw_std = np.std(all_stats)
+                            
+                            if raw_std < 3:
+                                rating = 'High'
+                            elif raw_std < 5:
+                                rating = 'Medium'
+                            else:
+                                rating = 'Low'
+                            
+                            return {
+                                'rating': rating,
+                                'std': raw_std,
+                                'matchup_adjusted': False,
+                                'explanation': f'Last {len(all_stats)} games'
+                            }
+                else:
+                    # Single stat
+                    stats_response = supabase.table('daily_player_stats').select(
+                        f'{prop_type}'
+                    ).eq('player_id', player_id).order('game_date', desc=True).limit(5).execute()
+                    
+                    if stats_response.data and len(stats_response.data) >= 3:
+                        all_stats = [g[prop_type] for g in stats_response.data if g.get(prop_type) is not None]
+                        
+                        if len(all_stats) >= 3:
+                            raw_std = np.std(all_stats)
+                            
+                            if raw_std < 3:
+                                rating = 'High'
+                            elif raw_std < 5:
+                                rating = 'Medium'
+                            else:
+                                rating = 'Low'
+                            
+                            return {
+                                'rating': rating,
+                                'std': raw_std,
+                                'matchup_adjusted': False,
+                                'explanation': f'Last {len(all_stats)} games'
+                            }
+            except:
+                pass
+            
+            return self._get_default_consistency_response()
+    
     def _load_real_lines(self):
         """Load real betting lines from The Odds API (with caching)"""
         try:
@@ -84,12 +284,16 @@ class BettingAdvisor:
                 bookmaker = prop.get('bookmaker', '').lower()
                 
                 if player_name not in self.real_lines_cache:
-                    self.real_lines_cache[player_name] = {}
+                    self.real_lines_cache[player_name] = {
+                        'home_team': prop.get('home_team'),
+                        'away_team': prop.get('away_team'),
+                        'props': {}
+                    }
                 
                 # Only update if this is a preferred bookmaker or we don't have a line yet
-                if prop_type not in self.real_lines_cache[player_name]:
+                if prop_type not in self.real_lines_cache[player_name]['props']:
                     # First line for this prop - take it
-                    self.real_lines_cache[player_name][prop_type] = {
+                    self.real_lines_cache[player_name]['props'][prop_type] = {
                         'line': prop['line'],
                         'over_odds': prop.get('over_odds'),
                         'under_odds': prop.get('under_odds'),
@@ -97,7 +301,7 @@ class BettingAdvisor:
                     }
                 else:
                     # We already have a line - only replace if this bookmaker is better
-                    current_book = self.real_lines_cache[player_name][prop_type].get('bookmaker', '').lower()
+                    current_book = self.real_lines_cache[player_name]['props'][prop_type].get('bookmaker', '').lower()
                     
                     # Get preference scores (lower is better)
                     current_score = preferred_books.index(current_book) if current_book in preferred_books else 999
@@ -105,7 +309,7 @@ class BettingAdvisor:
                     
                     if new_score < current_score:
                         # This bookmaker is preferred - replace
-                        self.real_lines_cache[player_name][prop_type] = {
+                        self.real_lines_cache[player_name]['props'][prop_type] = {
                             'line': prop['line'],
                             'over_odds': prop.get('over_odds'),
                             'under_odds': prop.get('under_odds'),
@@ -123,8 +327,9 @@ class BettingAdvisor:
             if self.real_lines_cache:
                 print("Sample players with real lines:")
                 for player_name in list(self.real_lines_cache.keys())[:5]:
-                    props_available = list(self.real_lines_cache[player_name].keys())
-                    print(f"  - {player_name}: {', '.join(props_available)}")
+                    props_available = list(self.real_lines_cache[player_name]['props'].keys())
+                    game_info = f"{self.real_lines_cache[player_name]['away_team']} @ {self.real_lines_cache[player_name]['home_team']}"
+                    print(f"  - {player_name} ({game_info}): {', '.join(props_available)}")
                     
         except Exception as e:
             print(f"❌ Error loading real lines: {e}")
@@ -138,7 +343,7 @@ class BettingAdvisor:
             
             # Try exact match first
             if normalized_name in self.real_lines_cache:
-                real_line = self.real_lines_cache[normalized_name].get(prop_type)
+                real_line = self.real_lines_cache[normalized_name]['props'].get(prop_type)
                 if real_line:
                     print(f"✅ Found real line for {player_name}: {real_line['line']} ({real_line['bookmaker']})")
                     return {
@@ -146,13 +351,14 @@ class BettingAdvisor:
                         'source': 'sportsbook',
                         'bookmaker': real_line.get('bookmaker'),
                         'over_odds': real_line.get('over_odds'),
-                        'under_odds': real_line.get('under_odds')
+                        'under_odds': real_line.get('under_odds'),
+                        'opponent': self.real_lines_cache[normalized_name].get('away_team') or self.real_lines_cache[normalized_name].get('home_team')
                     }
             
             # Try fuzzy match - split into parts and match
             name_parts = normalized_name.split()
             
-            for cached_name, props in self.real_lines_cache.items():
+            for cached_name, cached_data in self.real_lines_cache.items():
                 cached_parts = cached_name.split()
                 
                 # Check if all significant parts match
@@ -167,7 +373,7 @@ class BettingAdvisor:
                 
                 # If most parts match, consider it a match
                 if matches >= len(name_parts) - 1 or matches >= len(cached_parts) - 1:
-                    real_line = props.get(prop_type)
+                    real_line = cached_data['props'].get(prop_type)
                     if real_line:
                         print(f"✅ Found real line for {player_name} (matched '{cached_name}'): {real_line['line']} ({real_line['bookmaker']})")
                         return {
@@ -175,15 +381,16 @@ class BettingAdvisor:
                             'source': 'sportsbook',
                             'bookmaker': real_line.get('bookmaker'),
                             'over_odds': real_line.get('over_odds'),
-                            'under_odds': real_line.get('under_odds')
+                            'under_odds': real_line.get('under_odds'),
+                            'opponent': cached_data.get('away_team') or cached_data.get('home_team')
                         }
             
             # Last resort: try last name only
             if len(name_parts) > 1:
                 last_name = name_parts[-1]
-                for cached_name, props in self.real_lines_cache.items():
+                for cached_name, cached_data in self.real_lines_cache.items():
                     if last_name in cached_name.split()[-1]:
-                        real_line = props.get(prop_type)
+                        real_line = cached_data['props'].get(prop_type)
                         if real_line:
                             print(f"✅ Found real line for {player_name} (last name match '{cached_name}'): {real_line['line']}")
                             return {
@@ -191,7 +398,8 @@ class BettingAdvisor:
                                 'source': 'sportsbook',
                                 'bookmaker': real_line.get('bookmaker'),
                                 'over_odds': real_line.get('over_odds'),
-                                'under_odds': real_line.get('under_odds')
+                                'under_odds': real_line.get('under_odds'),
+                                'opponent': cached_data.get('away_team') or cached_data.get('home_team')
                             }
         
         # Fallback to calculated line
@@ -331,17 +539,36 @@ class BettingAdvisor:
             return {'error': str(e)}
     
     def _get_picks_from_real_lines(self, limit: int) -> List[Dict]:
-        """Get picks directly from players with real lines (today's games)"""
+        """Get picks directly from players with real lines (today's games) - OPTIMIZED"""
         picks = []
+        
+        # Pre-fetch all players from database to avoid repeated queries
+        print("📊 Pre-fetching player database...")
+        all_players_response = supabase.table('players').select(
+            'id, full_name, team_name, position'
+        ).execute()
+        
+        # Build lookup maps for fast matching
+        players_by_name = {}
+        players_by_last_name = {}
+        for p in all_players_response.data:
+            normalized = self._normalize_name(p['full_name'])
+            players_by_name[normalized] = p
+            last_name = normalized.split()[-1] if ' ' in normalized else normalized
+            if last_name not in players_by_last_name:
+                players_by_last_name[last_name] = []
+            players_by_last_name[last_name].append(p)
+        
+        print(f"✅ Loaded {len(players_by_name)} players into cache")
         
         # Common nickname and name variation mappings
         nickname_map = {
             'carlton carrington': 'bub carrington',
             'carlton "bub" carrington': 'bub carrington',
-            'vit krejci': 'vít krejčí',  # With accents
-            'kristaps porzingis': 'kristaps porzingis',  # Try with ņ
-            'luka doncic': 'luka dončić',  # With accent
-            'bogdan bogdanovic': 'bogdan bogdanović',  # With accent
+            'vit krejci': 'vít krejčí',
+            'kristaps porzingis': 'kristaps porzingis',
+            'luka doncic': 'luka dončić',
+            'bogdan bogdanovic': 'bogdan bogdanović',
             'nikola jokic': 'nikola jokić',
             'nikola vucevic': 'nikola vučević',
             'dario saric': 'dario šarić',
@@ -349,15 +576,31 @@ class BettingAdvisor:
             'goran dragic': 'goran dragić',
         }
         
-        for player_name, props in self.real_lines_cache.items():
+        for player_name, player_data in self.real_lines_cache.items():
             # Check all available prop types for this player
             available_props = []
+            opponent_team = player_data.get('away_team') or player_data.get('home_team')
             
-            for prop_type in ['points', 'rebounds', 'assists']:
-                if prop_type not in props:
+            # Map API prop names to database column names
+            prop_type_map = {
+                'points': 'points',
+                'rebounds': 'rebounds',
+                'assists': 'assists',
+                'threes': 'three_pointers_made',
+                'blocks': 'blocks',
+                'steals': 'steals',
+                'turnovers': 'turnovers',
+                'points_rebounds_assists': 'pra',  # Calculated
+                'points_rebounds': 'pr',  # Calculated
+                'points_assists': 'pa',  # Calculated
+                'rebounds_assists': 'ra',  # Calculated
+            }
+            
+            for prop_type in prop_type_map.keys():
+                if prop_type not in player_data['props']:
                     continue
                 
-                prop_data = props[prop_type]
+                prop_data = player_data['props'][prop_type]
                 available_props.append({
                     'type': prop_type,
                     'line': prop_data['line'],
@@ -369,82 +612,52 @@ class BettingAdvisor:
             if not available_props:
                 continue
             
-            # Try to find this player in database
+            # Try to find this player in database using cached data
             try:
                 # Normalize the name for searching
-                search_name = player_name.lower()
+                search_name = self._normalize_name(player_name)
                 
                 # Check nickname map
                 if search_name in nickname_map:
                     search_name = nickname_map[search_name]
                 
-                # Try multiple search strategies
-                player_response = None
-                found = False
+                player = None
                 
-                # Strategy 1: Try mapped name first
-                if search_name in nickname_map:
-                    mapped_name = nickname_map[search_name]
-                    player_response = supabase.table('players').select(
-                        'id, full_name, team_name, position'
-                    ).ilike('full_name', f'%{mapped_name}%').limit(1).execute()
-                    
-                    if player_response and player_response.data:
-                        print(f"✅ Found via nickname map: {player_name} → {player_response.data[0]['full_name']}")
-                        found = True
+                # Strategy 1: Exact match
+                if search_name in players_by_name:
+                    player = players_by_name[search_name]
                 
-                # Strategy 2: Search with wildcards for first and last name
-                if not found:
-                    name_parts = search_name.split()
-                    if len(name_parts) >= 2:
-                        first_name = name_parts[0]
-                        last_name = name_parts[-1]
-                        
-                        # Try searching with both names as wildcards
-                        player_response = supabase.table('players').select(
-                            'id, full_name, team_name, position'
-                        ).ilike('full_name', f'{first_name}%{last_name}%').limit(1).execute()
-                        
-                        if player_response and player_response.data:
-                            print(f"✅ Found via name parts: {player_name} → {player_response.data[0]['full_name']}")
-                            found = True
-                
-                # Strategy 3: Try last name only
-                if not found:
+                # Strategy 2: Last name match
+                if not player:
                     last_name = search_name.split()[-1] if ' ' in search_name else search_name
-                    player_response = supabase.table('players').select(
-                        'id, full_name, team_name, position'
-                    ).ilike('full_name', f'%{last_name}%').limit(1).execute()
-                    
-                    if player_response and player_response.data:
-                        # Verify first name also matches (loosely)
-                        db_name = player_response.data[0]['full_name'].lower()
-                        first_name = search_name.split()[0] if ' ' in search_name else search_name
-                        if first_name[:3] in db_name:
-                            print(f"✅ Found via last name: {player_name} → {player_response.data[0]['full_name']}")
-                            found = True
-                        else:
-                            found = False
+                    if last_name in players_by_last_name:
+                        candidates = players_by_last_name[last_name]
+                        # Try to match first name too
+                        first_name = search_name.split()[0] if ' ' in search_name else ''
+                        for candidate in candidates:
+                            candidate_normalized = self._normalize_name(candidate['full_name'])
+                            if first_name and first_name[:3] in candidate_normalized:
+                                player = candidate
+                                break
+                        if not player and candidates:
+                            player = candidates[0]  # Take first match
                 
-                # Strategy 4: Partial match on full name
-                if not found:
-                    player_response = supabase.table('players').select(
-                        'id, full_name, team_name, position'
-                    ).ilike('full_name', f'%{search_name}%').limit(1).execute()
-                    
-                    if player_response and player_response.data:
-                        print(f"✅ Found via partial match: {player_name} → {player_response.data[0]['full_name']}")
-                        found = True
+                # Strategy 3: Fuzzy match
+                if not player:
+                    name_parts = search_name.split()
+                    for cached_name, cached_player in players_by_name.items():
+                        cached_parts = cached_name.split()
+                        matches = sum(1 for part in name_parts if any(part in cp or cp in part for cp in cached_parts if len(part) > 1))
+                        if matches >= len(name_parts) - 1:
+                            player = cached_player
+                            break
                 
-                if not found or not player_response or not player_response.data:
-                    print(f"⚠️  Could not find player in database: {player_name}")
+                if not player:
                     continue
                 
-                player = player_response.data[0]
-                
-                # Get recent stats
+                # Get recent stats - fetch all needed columns
                 stats = supabase.table('daily_player_stats').select(
-                    'points, rebounds, assists'
+                    'points, rebounds, assists, steals, blocks, turnovers, three_pointers_made'
                 ).eq('player_id', player['id']).order('game_date', desc=True).limit(5).execute()
                 
                 if stats.data and len(stats.data) >= 3:
@@ -457,9 +670,25 @@ class BettingAdvisor:
                     for prop in available_props:
                         prop_type = prop['type']
                         line = prop['line']
+                        db_column = prop_type_map.get(prop_type)
                         
-                        # Get player's average for this stat
-                        recent_stats = [g[prop_type] for g in stats.data]
+                        # Calculate stat values (handle combo props)
+                        if prop_type == 'points_rebounds_assists':
+                            recent_stats = [g['points'] + g['rebounds'] + g['assists'] for g in stats.data]
+                        elif prop_type == 'points_rebounds':
+                            recent_stats = [g['points'] + g['rebounds'] for g in stats.data]
+                        elif prop_type == 'points_assists':
+                            recent_stats = [g['points'] + g['assists'] for g in stats.data]
+                        elif prop_type == 'rebounds_assists':
+                            recent_stats = [g['rebounds'] + g['assists'] for g in stats.data]
+                        elif db_column and db_column in stats.data[0]:
+                            recent_stats = [g[db_column] for g in stats.data if g.get(db_column) is not None]
+                        else:
+                            continue  # Skip if stat not available
+                        
+                        if not recent_stats or len(recent_stats) < 3:
+                            continue
+                        
                         player_avg = np.mean(recent_stats)
                         stat_std = np.std(recent_stats)
                         
@@ -488,12 +717,34 @@ class BettingAdvisor:
                         # Only consider OVER/UNDER picks (skip PASS)
                         if recommendation != 'PASS' and value_score > best_value_score:
                             best_value_score = value_score
+                            
+                            # Use simple consistency calculation for speed (skip matchup-aware for now)
+                            # Matchup-aware is slower due to additional queries
+                            if stat_std < 3:
+                                consistency_rating = 'High'
+                            elif stat_std < 5:
+                                consistency_rating = 'Medium'
+                            else:
+                                consistency_rating = 'Low'
+                            
+                            consistency_data = {
+                                'rating': consistency_rating,
+                                'std': stat_std,
+                                'matchup_adjusted': False,
+                                'explanation': f'Last {len(recent_stats)} games'
+                            }
+                            
+                            # Enhance reason with matchup info if available
+                            enhanced_reason = reason
+                            if consistency_data['matchup_adjusted']:
+                                enhanced_reason += f" | vs {opponent_team}: {consistency_data['matchup_avg']:.1f} avg in {consistency_data['matchup_games']} games"
+                            
                             best_pick = {
                                 'player_id': player['id'],
                                 'player_name': player['full_name'],
                                 'team': player['team_name'],
                                 'position': player['position'],
-                                'prop_type': prop_type.capitalize(),
+                                'prop_type': self._format_prop_name(prop_type),
                                 'line': line,
                                 'line_source': 'sportsbook',
                                 'bookmaker': prop['bookmaker'],
@@ -501,9 +752,12 @@ class BettingAdvisor:
                                 'under_odds': prop['under_odds'],
                                 'recommendation': recommendation,
                                 'confidence_level': confidence,
-                                'reason': reason,
+                                'reason': enhanced_reason,
                                 'player_avg': round(player_avg, 1),
-                                'consistency': 'High' if stat_std < 3 else 'Medium' if stat_std < 5 else 'Low',
+                                'consistency': consistency_data['rating'],
+                                'consistency_explanation': consistency_data['explanation'],
+                                'matchup_adjusted': consistency_data['matchup_adjusted'],
+                                'opponent': opponent_team,
                                 'momentum_score': 0.5,
                                 'confidence': 0.5
                             }

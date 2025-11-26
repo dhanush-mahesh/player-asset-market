@@ -683,18 +683,36 @@ GUIDELINES:
 
 # --- BETTING ADVISOR ENDPOINTS ---
 
+# Cache for betting picks (5 minute TTL)
+_betting_picks_cache = {
+    'data': None,
+    'timestamp': None,
+    'ttl': 300  # 5 minutes
+}
+
 @app.get("/betting/picks")
-def get_betting_picks(todays_games: bool = True):
+def get_betting_picks(todays_games: bool = True, force_refresh: bool = False):
     """
-    Get top betting picks
+    Get top betting picks (with caching for faster loads)
     
     Parameters:
     - todays_games: If True (default), show only players in today's games with real sportsbook lines
                     If False, show top momentum picks with estimated lines
+    - force_refresh: If True, bypass cache and fetch fresh data
     """
     try:
         import sys
         import os
+        import time
+        
+        # Check cache first (unless force_refresh)
+        if not force_refresh and _betting_picks_cache['data'] is not None:
+            cache_age = time.time() - _betting_picks_cache['timestamp']
+            if cache_age < _betting_picks_cache['ttl']:
+                print(f"✅ Serving cached betting picks (age: {cache_age:.0f}s)")
+                return _betting_picks_cache['data']
+        
+        print("🔄 Fetching fresh betting picks...")
         sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
         from betting_advisor import BettingAdvisor
         
@@ -705,13 +723,20 @@ def get_betting_picks(todays_games: bool = True):
         # Count how many have real lines
         real_line_count = sum(1 for p in picks if p.get('line_source') == 'sportsbook')
         
-        return {
+        result = {
             "generated_at": datetime.datetime.now().isoformat(),
             "picks": picks,
             "todays_games_only": todays_games,
             "real_lines_available": real_line_count,
-            "total_picks": len(picks)
+            "total_picks": len(picks),
+            "cached": False
         }
+        
+        # Update cache
+        _betting_picks_cache['data'] = result
+        _betting_picks_cache['timestamp'] = time.time()
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

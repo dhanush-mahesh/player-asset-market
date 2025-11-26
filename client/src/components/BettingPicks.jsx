@@ -123,10 +123,31 @@ function BettingPicks({ apiUrl }) {
                     <span className="text-neutral-400">Player Avg:</span>
                     <span className="font-semibold">{pick.player_avg}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-neutral-400">Consistency:</span>
-                    <span className="font-semibold">{pick.consistency}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold">{pick.consistency}</span>
+                      {pick.consistency_explanation && (
+                        <span 
+                          className="text-xs text-neutral-500 cursor-help" 
+                          title={pick.consistency_explanation}
+                        >
+                          ⓘ
+                        </span>
+                      )}
+                      {pick.matchup_adjusted && (
+                        <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded font-semibold">
+                          MATCHUP
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  {pick.opponent && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-400">Opponent:</span>
+                      <span className="font-semibold text-blue-400">{pick.opponent}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-neutral-700">

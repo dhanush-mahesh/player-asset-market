@@ -60,7 +60,20 @@ class OddsAPIClient:
             return []
         
         # Now fetch props for each event
-        markets = ["player_points", "player_rebounds", "player_assists"]
+        # Available markets from The Odds API
+        markets = [
+            "player_points",
+            "player_rebounds", 
+            "player_assists",
+            "player_threes",  # 3-pointers made
+            "player_blocks",
+            "player_steals",
+            "player_turnovers",
+            "player_points_rebounds_assists",  # PRA combo
+            "player_points_rebounds",  # PR combo
+            "player_points_assists",  # PA combo
+            "player_rebounds_assists",  # RA combo
+        ]
         all_props = []
         
         for event in events[:3]:  # Limit to first 3 games to save API calls
