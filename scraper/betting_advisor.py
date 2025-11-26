@@ -60,6 +60,33 @@ class BettingAdvisor:
         }
         return prop_names.get(prop_type, prop_type.capitalize())
     
+    def _teams_match(self, team1: str, team2: str) -> bool:
+        """Check if two team names refer to the same team (handles variations)"""
+        if not team1 or not team2:
+            return False
+        
+        # Normalize team names
+        t1 = team1.lower().strip()
+        t2 = team2.lower().strip()
+        
+        # Exact match
+        if t1 == t2:
+            return True
+        
+        # Check if one contains the other (e.g., "Lakers" in "Los Angeles Lakers")
+        if t1 in t2 or t2 in t1:
+            return True
+        
+        # Check key words match (e.g., "Boston Celtics" vs "Celtics")
+        t1_words = set(t1.split())
+        t2_words = set(t2.split())
+        
+        # If they share a significant word (not "los", "angeles", etc.)
+        common_words = t1_words & t2_words
+        significant_words = common_words - {'los', 'angeles', 'new', 'york', 'golden', 'state', 'portland', 'trail'}
+        
+        return len(significant_words) > 0
+    
     def _get_default_consistency_response(self) -> Dict:
         """Return default consistency response when data is insufficient"""
         return {
@@ -579,7 +606,11 @@ class BettingAdvisor:
         for player_name, player_data in self.real_lines_cache.items():
             # Check all available prop types for this player
             available_props = []
-            opponent_team = player_data.get('away_team') or player_data.get('home_team')
+            
+            # We'll determine opponent after we find the player in database
+            home_team = player_data.get('home_team')
+            away_team = player_data.get('away_team')
+            opponent_team = None  # Will be set after player lookup
             
             # Map API prop names to database column names
             prop_type_map = {
@@ -654,6 +685,18 @@ class BettingAdvisor:
                 
                 if not player:
                     continue
+                
+                # Determine opponent based on player's team
+                player_team = player['team_name']
+                if home_team and away_team:
+                    # Check which team the player is on and set opponent to the other team
+                    if player_team == home_team or self._teams_match(player_team, home_team):
+                        opponent_team = away_team
+                    elif player_team == away_team or self._teams_match(player_team, away_team):
+                        opponent_team = home_team
+                    else:
+                        # Fallback: player team doesn't match either (maybe traded recently)
+                        opponent_team = away_team if home_team else home_team
                 
                 # Get recent stats - fetch all needed columns
                 stats = supabase.table('daily_player_stats').select(
