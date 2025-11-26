@@ -25,11 +25,14 @@ class MLTradeAdvisor:
     
     def __init__(self):
         self.model = None
-        self.model_path = 'ml_trade_model.pkl'
+        # Use absolute path relative to this file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.model_path = os.path.join(current_dir, 'ml_trade_model.pkl')
         self.feature_names = [
             'stat_component', 'sentiment_component', 'momentum_score',
             'confidence_score', 'value_score', 'stat_trend', 'sentiment_trend'
         ]
+        print(f"🔍 Looking for model at: {self.model_path}")
         
     def generate_training_data(self, lookback_days: int = 7) -> pd.DataFrame:
         """
@@ -170,14 +173,22 @@ class MLTradeAdvisor:
     
     def load_model(self):
         """Load trained model from disk"""
+        print(f"🔍 Attempting to load model from: {self.model_path}")
+        print(f"   File exists: {os.path.exists(self.model_path)}")
+        print(f"   Current working directory: {os.getcwd()}")
+        
         if not os.path.exists(self.model_path):
             print(f"❌ Model file not found: {self.model_path}")
             return False
         
-        with open(self.model_path, 'rb') as f:
-            self.model = pickle.load(f)
-        print(f"✅ Model loaded from {self.model_path}")
-        return True
+        try:
+            with open(self.model_path, 'rb') as f:
+                self.model = pickle.load(f)
+            print(f"✅ Model loaded successfully from {self.model_path}")
+            return True
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            return False
     
     def predict_trade_success(self, player_data: Dict) -> Dict:
         """
@@ -263,8 +274,8 @@ class MLTradeAdvisor:
             
             prediction = self.predict_trade_success(player_data)
             
-            # Only include strong buy signals
-            if prediction['action'] == 'buy' and prediction['probability'] > 0.6:
+            # Only include buy signals (lowered threshold from 0.6 to 0.55)
+            if prediction['action'] == 'buy' and prediction['probability'] > 0.55:
                 recommendations.append({
                     'player_id': record['player_id'],
                     'value_score': record['value_score'],
@@ -292,7 +303,12 @@ class MLTradeAdvisor:
                     rec['team'] = player['team_name']
                     rec['position'] = player['position']
         
-        print(f"✅ Found {len(recommendations[:limit])} ML-powered buy opportunities")
+        result_count = len(recommendations[:limit])
+        print(f"✅ Found {result_count} ML-powered buy opportunities")
+        
+        if result_count == 0:
+            print(f"ℹ️  Checked {len(response.data)} players, none met criteria (probability > 0.55 and action == 'buy')")
+        
         return recommendations[:limit]
 
 def train_and_save():

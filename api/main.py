@@ -680,3 +680,101 @@ GUIDELINES:
             "success": False,
             "error": str(e)
         }
+
+# --- BETTING ADVISOR ENDPOINTS ---
+
+@app.get("/betting/picks")
+def get_betting_picks(todays_games: bool = True):
+    """
+    Get top betting picks
+    
+    Parameters:
+    - todays_games: If True (default), show only players in today's games with real sportsbook lines
+                    If False, show top momentum picks with estimated lines
+    """
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
+        from betting_advisor import BettingAdvisor
+        
+        # Always try to use real lines
+        advisor = BettingAdvisor(use_real_lines=True)
+        picks = advisor.get_top_betting_picks(limit=20, todays_games_only=todays_games)
+        
+        # Count how many have real lines
+        real_line_count = sum(1 for p in picks if p.get('line_source') == 'sportsbook')
+        
+        return {
+            "generated_at": datetime.datetime.now().isoformat(),
+            "picks": picks,
+            "todays_games_only": todays_games,
+            "real_lines_available": real_line_count,
+            "total_picks": len(picks)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/betting/player/{player_id}")
+def get_player_betting_props(player_id: str, use_real_lines: bool = False):
+    """
+    Get betting prop insights for specific player
+    
+    Parameters:
+    - player_id: The player's ID
+    - use_real_lines: If True, fetch real lines from The Odds API (requires ODDS_API_KEY)
+                      If False, use calculated lines from player averages (default)
+    """
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
+        from betting_advisor import BettingAdvisor
+        
+        advisor = BettingAdvisor(use_real_lines=use_real_lines)
+        insights = advisor.get_player_prop_insights(player_id)
+        insights['using_real_lines'] = use_real_lines
+        
+        return insights
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- FANTASY OPTIMIZER ENDPOINTS ---
+
+@app.get("/fantasy/lineup")
+def get_fantasy_lineup():
+    """Get optimal fantasy lineup"""
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
+        from fantasy_optimizer import FantasyOptimizer
+        
+        optimizer = FantasyOptimizer()
+        lineup = optimizer.get_optimal_lineup(limit=10)
+        
+        return {
+            "generated_at": datetime.datetime.now().isoformat(),
+            "lineup": lineup
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/fantasy/value-picks")
+def get_fantasy_value_picks():
+    """Get best fantasy value picks"""
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '../scraper'))
+        from fantasy_optimizer import FantasyOptimizer
+        
+        optimizer = FantasyOptimizer()
+        picks = optimizer.get_value_picks(10)
+        
+        return {
+            "generated_at": datetime.datetime.now().isoformat(),
+            "value_picks": picks
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

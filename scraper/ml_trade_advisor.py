@@ -304,6 +304,7 @@ def train_and_save():
     
     if training_df is None or len(training_df) < 50:
         print("❌ Not enough data to train. Need more historical data.")
+        print("   Run the scraper daily for at least 7 days to collect enough data.")
         return
     
     # Train model
@@ -312,8 +313,18 @@ def train_and_save():
     # Save model
     advisor.save_model()
     
+    # Copy to api folder
+    import shutil
+    api_model_path = os.path.join(os.path.dirname(__file__), '../api/ml_trade_model.pkl')
+    try:
+        shutil.copy(advisor.model_path, api_model_path)
+        print(f"✅ Model copied to {api_model_path}")
+    except Exception as e:
+        print(f"⚠️  Could not copy to api folder: {e}")
+    
     print(f"\n✅ ML Trade Advisor trained and saved!")
     print(f"   Model accuracy: {accuracy*100:.1f}%")
+    print(f"   Model saved to: {advisor.model_path}")
     print(f"   Ready to use for predictions")
 
 if __name__ == "__main__":

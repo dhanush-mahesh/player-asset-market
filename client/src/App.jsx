@@ -8,6 +8,8 @@ import LiveScores from './components/LiveScores'
 import Watchlist from './components/Watchlist'
 import TradeSimulator from './components/TradeSimulator'
 import ChatBot from './components/ChatBot'
+import BettingPicks from './components/BettingPicks'
+import FantasyLineup from './components/FantasyLineup'
 
 const API_URL = 'http://127.0.0.1:8000'
 const COMPARE_LIMIT = 3
@@ -99,73 +101,11 @@ function App() {
                   }}
                 />
               </div>
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={() => {
-                    setCurrentView('home');
-                    setViewingCompare(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    currentView === 'home' && !viewingCompare
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
-                  }`}
-                >
-                  Home
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentView('watchlist');
-                    setViewingCompare(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    currentView === 'watchlist'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
-                  }`}
-                >
-                  Watchlist
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentView('live');
-                    setViewingCompare(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    currentView === 'live'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
-                  }`}
-                >
-                  Live Scores
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentView('simulator');
-                    setViewingCompare(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    currentView === 'simulator'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
-                  }`}
-                >
-                  Simulator
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentView('ai');
-                    setViewingCompare(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    currentView === 'ai'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-700'
-                  }`}
-                >
-                  AI Insights
-                </button>
-              </div>
+              <NavigationDropdown 
+                currentView={currentView}
+                setCurrentView={setCurrentView}
+                setViewingCompare={setViewingCompare}
+              />
             </div>
           </div>
         </nav>
@@ -195,6 +135,16 @@ function App() {
           />
         ) : currentView === 'ai' ? (
           <AIInsights
+            apiUrl={API_URL}
+            onPlayerClick={(id) => setSelectedPlayerId(id)}
+          />
+        ) : currentView === 'betting' ? (
+          <BettingPicks
+            apiUrl={API_URL}
+            onPlayerClick={(id) => setSelectedPlayerId(id)}
+          />
+        ) : currentView === 'fantasy' ? (
+          <FantasyLineup
             apiUrl={API_URL}
             onPlayerClick={(id) => setSelectedPlayerId(id)}
           />
@@ -250,6 +200,76 @@ function App() {
       <ChatBot apiUrl={API_URL} />
     </div>
   )
+}
+
+// Navigation Dropdown Component
+function NavigationDropdown({ currentView, setCurrentView, setViewingCompare }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const menuItems = [
+    { id: 'home', label: 'Home', icon: '🏠' },
+    { id: 'watchlist', label: 'Watchlist', icon: '⭐' },
+    { id: 'live', label: 'Live Scores', icon: '🏀' },
+    { id: 'simulator', label: 'Trade Simulator', icon: '🔄' },
+    { id: 'ai', label: 'AI Insights', icon: '🤖' },
+    { id: 'betting', label: 'Betting Picks', icon: '🎲' },
+    { id: 'fantasy', label: 'Fantasy Lineup', icon: '⚡' },
+  ];
+
+  const currentItem = menuItems.find(item => item.id === currentView) || menuItems[0];
+
+  const handleSelect = (id) => {
+    setCurrentView(id);
+    setViewingCompare(false);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-500 transition-colors"
+      >
+        <span>{currentItem.icon}</span>
+        <span>{currentItem.label}</span>
+        <svg 
+          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute right-0 mt-2 w-56 bg-highlight-dark border border-neutral-700 rounded-lg shadow-xl z-20">
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleSelect(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                  currentView === item.id
+                    ? 'bg-blue-600 text-white'
+                    : 'text-neutral-300 hover:bg-neutral-700'
+                } ${item.id === menuItems[0].id ? 'rounded-t-lg' : ''} ${
+                  item.id === menuItems[menuItems.length - 1].id ? 'rounded-b-lg' : ''
+                }`}
+              >
+                <span className="text-xl">{item.icon}</span>
+                <span className="font-semibold">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default App
