@@ -1,0 +1,68 @@
+services:
+  # Frontend (React)
+  - type: web
+    name: nba-analytics-frontend
+    env: static
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: ./client/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # Backend API (FastAPI)
+  - type: web
+    name: nba-analytics-api
+    env: python
+    buildCommand: cd api && pip install -r requirements.txt
+    startCommand: cd api && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
+
+  # Daily Stats Scraper (Cron Job)
+  - type: cron
+    name: daily-stats-scraper
+    env: python
+    schedule: "0 8 * * *"  # 8 AM daily
+    buildCommand: cd scraper && pip install -r requirements.txt
+    startCommand: cd scraper && python daily_stats_scraper.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  # Enhanced Value Index (Cron Job)
+  - type: cron
+    name: value-index-calculator
+    env: python
+    schedule: "0 9 * * *"  # 9 AM daily
+    buildCommand: cd scraper && pip install -r requirements.txt
+    startCommand: cd scraper && python enhanced_value_index.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  # Sentiment Scraper (Cron Job)
+  - type: cron
+    name: sentiment-scraper
+    env: python
+    schedule: "0 10 * * *"  # 10 AM daily
+    buildCommand: cd scraper && pip install -r requirements.txt
+    startCommand: cd scraper && python enhanced_sentiment_scraper.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
