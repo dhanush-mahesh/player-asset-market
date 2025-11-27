@@ -11,7 +11,7 @@ import ChatBot from './components/ChatBot'
 import BettingPicks from './components/BettingPicks'
 import FantasyLineup from './components/FantasyLineup'
 
-const API_URL = 'http://127.0.0.1:8000'
+const API_URL = 'https://nba-analytics-api-2sal.onrender.com'
 const COMPARE_LIMIT = 3
 
 function App() {
