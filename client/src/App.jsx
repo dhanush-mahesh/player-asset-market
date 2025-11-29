@@ -109,7 +109,7 @@ function App() {
                 <img 
                   src="/SportfolioLogo.png" 
                   alt="Sportfolio Logo" 
-                  className="h-14 w-44 object-contain cursor-pointer transition-all duration-300 group-hover:scale-105 group-hover:brightness-110"
+                  className="h-50 w-40 object-contain cursor-pointer transition-all duration-300 group-hover:scale-105 group-hover:brightness-110"
                   onClick={() => {
                     setCurrentView('home');
                     setViewingCompare(false);
