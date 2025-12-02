@@ -32,8 +32,9 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           cd scraper
+          echo "=== Starting Daily Stats Scraper ==="
           python daily_stats_scraper.py
-        continue-on-error: true
+          echo "=== Daily Stats Scraper Complete ==="
         
       - name: Run value index calculator
         env:
@@ -41,7 +42,9 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           cd scraper
+          echo "=== Starting Value Index Calculator ==="
           python enhanced_value_index.py
+          echo "=== Value Index Calculator Complete ==="
         continue-on-error: true
 
       - name: Run sentiment scraper
@@ -54,17 +57,48 @@ jobs:
           REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
         run: |
           cd scraper
+          echo "=== Starting Sentiment Scraper ==="
           python enhanced_sentiment_scraper.py
+          echo "=== Sentiment Scraper Complete ==="
+        continue-on-error: true
+        
+      - name: Verify data was updated
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cd scraper
+          python3 << 'EOF'
+          import os
+          from supabase import create_client
+          import datetime
+          
+          url = os.environ.get("SUPABASE_URL")
+          key = os.environ.get("SUPABASE_KEY")
+          supabase = create_client(url, key)
+          
+          # Check for recent stats
+          yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+          response = supabase.table('daily_player_stats').select('game_date').eq('game_date', yesterday).limit(1).execute()
+          
+          if response.data:
+              print(f"✅ Data verified: Found stats for {yesterday}")
+          else:
+              print(f"⚠️  No stats found for {yesterday} - this might be normal if no games were played")
+          EOF
         continue-on-error: true
         
       - name: Clear API cache
         run: |
-          echo "Clearing API cache..."
+          echo "=== Clearing API cache ==="
           curl -X POST https://nba-analytics-api-2sal.onrender.com/admin/clear-cache || echo "Cache clear failed, but continuing..."
+          echo "=== Cache clear complete ==="
         continue-on-error: true
         
-      - name: Check for failures
-        if: failure()
+      - name: Summary
+        if: always()
         run: |
-          echo "⚠️ One or more scrapers failed. Check the logs above."
-          exit 1
+          echo "=== Scraper Run Summary ==="
+          echo "Check the logs above for any errors"
+          echo "If you see 'No games found', that's normal for off days"
+          echo "If you see errors, check your GitHub secrets configuration"
