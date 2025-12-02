@@ -55,6 +55,19 @@ class CompareRequest(BaseModel):
 def read_root():
     return {"message": "Sportfolio API is running"}
 
+@app.post("/admin/clear-cache")
+def clear_cache():
+    """Clear all cached data - useful after scraper runs"""
+    global _cache, _cache_ttl
+    cache_size = len(_cache)
+    _cache.clear()
+    _cache_ttl.clear()
+    return {
+        "message": "Cache cleared successfully",
+        "items_cleared": cache_size,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+
 @app.get("/players")
 def get_players():
     try:

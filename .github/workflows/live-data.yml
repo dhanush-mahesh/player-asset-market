@@ -1,0 +1,44 @@
+name: Live Data Updates
+
+on:
+  schedule:
+    # Run every 30 minutes during typical NBA game times (6 PM - 1 AM EST = 11 PM - 6 AM UTC)
+    - cron: '*/30 23-23 * * *'  # 6:00 PM - 11:30 PM EST
+    - cron: '*/30 0-6 * * *'     # 12:00 AM - 1:00 AM EST
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  live-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          cd scraper
+          pip install -r requirements.txt
+          
+      - name: Run live scores scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cd scraper
+          python live_scores.py
+        continue-on-error: true
+        
+      - name: Update betting lines
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: |
+          cd scraper
+          python odds_api_integration.py
+        continue-on-error: true
