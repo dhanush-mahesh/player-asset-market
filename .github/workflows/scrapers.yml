@@ -57,6 +57,12 @@ jobs:
           python enhanced_sentiment_scraper.py
         continue-on-error: true
         
+      - name: Clear API cache
+        run: |
+          echo "Clearing API cache..."
+          curl -X POST https://nba-analytics-api-2sal.onrender.com/admin/clear-cache || echo "Cache clear failed, but continuing..."
+        continue-on-error: true
+        
       - name: Check for failures
         if: failure()
         run: |

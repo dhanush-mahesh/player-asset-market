@@ -71,8 +71,8 @@ def clear_cache():
 @app.get("/players")
 def get_players():
     try:
-        # Check cache first
-        cached_data, hit = get_cached("players", ttl_seconds=600)
+        # Check cache first (2 min cache)
+        cached_data, hit = get_cached("players", ttl_seconds=120)
         if hit:
             return cached_data
         
@@ -90,8 +90,8 @@ def get_players():
 @app.get("/featured-players")
 def get_featured_players():
     try:
-        # Check cache first
-        cached_data, hit = get_cached("featured", ttl_seconds=300)
+        # Check cache first (2 min cache)
+        cached_data, hit = get_cached("featured", ttl_seconds=120)
         if hit:
             return cached_data
         
@@ -245,8 +245,8 @@ def get_player_enhanced_metrics(player_id: str):
 @app.get("/market-movers")
 def get_market_movers():
     try:
-        # Check cache
-        cached_data, hit = get_cached("market_movers", ttl_seconds=300)
+        # Check cache (2 min cache)
+        cached_data, hit = get_cached("market_movers", ttl_seconds=120)
         if hit:
             return cached_data
         
@@ -753,11 +753,11 @@ GUIDELINES:
 
 # --- BETTING ADVISOR ENDPOINTS ---
 
-# Cache for betting picks (5 minute TTL)
+# Cache for betting picks (2 minute TTL)
 _betting_picks_cache = {
     'data': None,
     'timestamp': None,
-    'ttl': 300  # 5 minutes
+    'ttl': 120  # 2 minutes
 }
 
 @app.get("/betting/picks")
@@ -775,10 +775,10 @@ def get_betting_picks(todays_games: bool = True, force_refresh: bool = False):
         import os
         import time
         
-        # Check cache first (unless force_refresh)
+        # Check cache first (unless force_refresh) - 2 min cache
         if not force_refresh and _betting_picks_cache['data'] is not None:
             cache_age = time.time() - _betting_picks_cache['timestamp']
-            if cache_age < _betting_picks_cache['ttl']:
+            if cache_age < 120:  # 2 minutes instead of 5
                 print(f"✅ Serving cached betting picks (age: {cache_age:.0f}s)")
                 return _betting_picks_cache['data']
         
@@ -840,8 +840,8 @@ def get_player_betting_props(player_id: str, use_real_lines: bool = False):
 def get_fantasy_lineup():
     """Get optimal fantasy lineup"""
     try:
-        # Check cache
-        cached_data, hit = get_cached("fantasy_lineup", ttl_seconds=600)
+        # Check cache (2 min cache)
+        cached_data, hit = get_cached("fantasy_lineup", ttl_seconds=120)
         if hit:
             return cached_data
         
